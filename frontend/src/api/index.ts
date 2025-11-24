@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { AxiosProgressEvent } from 'axios';
 import type { UserInfo, UploadResponse, ImageInfo, ApiResponse } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
@@ -66,13 +67,17 @@ export const userApi = {
 // 图片相关 API
 export const imageApi = {
   // 上传图片
-  uploadImage: (file: File): Promise<UploadResponse> => {
+  uploadImage: (
+    file: File,
+    onUploadProgress?: (event: AxiosProgressEvent) => void
+  ): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append('image', file);
     return api.post('/images/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      onUploadProgress,
     });
   },
 

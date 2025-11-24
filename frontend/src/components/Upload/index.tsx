@@ -1,184 +1,344 @@
-import { observer } from 'mobx-react-lite';
-import { useState, useRef } from 'react';
-import { Card, Upload, Button, message, Image } from 'antd';
-import { UploadOutlined, DeleteOutlined } from '@ant-design/icons';
-import { appStore } from '../../store';
-import { isValidImageType, isValidFileSize, createImagePreview, revokeImagePreview } from '../../utils';
-import ReactCropper from 'react-cropper';
-import 'cropperjs/dist/cropper.css';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Button,
+  Card,
+  List,
+  Progress,
+  Space,
+  Tag,
+  Typography,
+  Upload,
+  message,
+  Empty,
+} from 'antd';
+import { InboxOutlined, UploadOutlined, DeleteOutlined, HomeOutlined } from '@ant-design/icons';
+import type { UploadProps } from 'antd';
+import { imageApi } from '../../api';
+import { imageStore } from '../../store';
+import {
+  createImagePreview,
+  formatFileSize,
+  isValidFileSize,
+  isValidImageType,
+  revokeImagePreview,
+} from '../../utils';
+import PageHeaderBar from '../common/PageHeaderBar';
 
-const UploadComponent = observer(() => {
-  const [preview, setPreview] = useState<string>('');
-  const [cropperVisible, setCropperVisible] = useState(false);
-  const [croppedImage, setCroppedImage] = useState<string>('');
-  const cropperRef = useRef<any>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const { loading } = appStore;
+const { Dragger } = Upload;
+const { Title, Text } = Typography;
 
-  // 处理文件选择
-  const handleFileChange = (file: File) => {
-    // 验证文件类型
-    if (!isValidImageType(file)) {
-      message.error('请选择有效的图片文件（JPG、PNG、GIF、WebP）');
-      return false;
-    }
+type UploadStatus = 'waiting' | 'uploading' | 'success' | 'error';
 
-    // 验证文件大小
-    if (!isValidFileSize(file, 10)) {
-      message.error('图片大小不能超过 10MB');
-      return false;
-    }
+interface UploadItem {
+  uid: string;
+  file: File;
+  preview: string;
+  name: string;
+  size: number;
+  status: UploadStatus;
+  percent: number;
+  error?: string;
+}
 
-    setFile(file);
-    const previewUrl = createImagePreview(file);
-    setPreview(previewUrl);
-    setCropperVisible(true);
-    return false; // 阻止自动上传
-  };
+const STATUS_TEXT: Record<UploadStatus, string> = {
+  waiting: '等待上传',
+  uploading: '上传中',
+  success: '上传成功',
+  error: '上传失败',
+};
 
-  // 裁剪完成
-  const handleCrop = () => {
-    const cropper = cropperRef.current?.cropper;
-    if (cropper) {
-      const canvas = cropper.getCroppedCanvas({
-        width: 800,
-        height: 800,
-        imageSmoothingEnabled: true,
-        imageSmoothingQuality: 'high',
+const STATUS_COLOR: Record<UploadStatus, string> = {
+  waiting: 'default',
+  uploading: 'processing',
+  success: 'success',
+  error: 'error',
+};
+
+const UploadPage = () => {
+  const [files, setFiles] = useState<UploadItem[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const navigate = useNavigate();
+
+  const addFiles = (newFiles: File[]) => {
+    if (!newFiles.length) return;
+
+    const appended: UploadItem[] = [];
+    newFiles.forEach((file) => {
+      if (!isValidImageType(file)) {
+        message.warning(`${file.name} 不是支持的图片格式`);
+        return;
+      }
+      if (!isValidFileSize(file, 20)) {
+        message.warning(`${file.name} 超过 20MB 限制`);
+        return;
+      }
+
+      appended.push({
+        uid: `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
+        file,
+        preview: createImagePreview(file),
+        name: file.name,
+        size: file.size,
+        status: 'waiting',
+        percent: 0,
       });
+    });
 
-      canvas.toBlob((blob: Blob | null) => {
-        if (blob) {
-          const croppedFile = new File([blob], file?.name || 'cropped.jpg', {
-            type: 'image/jpeg',
-          });
-          setFile(croppedFile);
-          setCroppedImage(canvas.toDataURL());
-        }
-      }, 'image/jpeg', 0.9);
-    }
-  };
-
-  // 确认裁剪
-  const handleConfirmCrop = () => {
-    handleCrop();
-    setCropperVisible(false);
-  };
-
-  // 取消裁剪
-  const handleCancelCrop = () => {
-    if (preview) {
-      revokeImagePreview(preview);
-    }
-    setPreview('');
-    setCropperVisible(false);
-    setFile(null);
-  };
-
-  // 上传图片
-  const handleUpload = async () => {
-    if (!file) {
-      message.warning('请先选择图片');
+    if (appended.length === 0) {
       return;
     }
 
+    setFiles((prev) => [...prev, ...appended]);
+    message.success(`已添加 ${appended.length} 个文件`);
+  };
+
+  const updateFile = (uid: string, updates: Partial<UploadItem>) => {
+    setFiles((prev) =>
+      prev.map((item) => (item.uid === uid ? { ...item, ...updates } : item))
+    );
+  };
+
+  const handleUpload = async (item: UploadItem) => {
+    updateFile(item.uid, { status: 'uploading', percent: 0, error: undefined });
     try {
-      await appStore.uploadImage(file);
-      message.success('图片上传成功');
-      // 清理预览
-      if (preview) {
-        revokeImagePreview(preview);
+      const response = await imageApi.uploadImage(item.file, (event) => {
+        if (!event.total) return;
+        const percent = Math.round((event.loaded / event.total) * 100);
+        updateFile(item.uid, { percent });
+      });
+
+      if (response.success) {
+        updateFile(item.uid, { status: 'success', percent: 100 });
+        return true;
       }
-      setPreview('');
-      setCroppedImage('');
-      setFile(null);
+
+      updateFile(item.uid, {
+        status: 'error',
+        error: response.message || '上传失败',
+        percent: 100,
+      });
+      return false;
     } catch (error: any) {
-      message.error(error.message || '上传失败');
+      updateFile(item.uid, {
+        status: 'error',
+        error: error.message || '上传失败',
+      });
+      return false;
     }
   };
 
+  const handleUploadAll = async () => {
+    const targets = files.filter((item) => item.status === 'waiting' || item.status === 'error');
+    if (targets.length === 0) {
+      message.info('没有需要上传的文件');
+      return;
+    }
+
+    setUploading(true);
+    let successCount = 0;
+    for (const item of targets) {
+      // eslint-disable-next-line no-await-in-loop
+      const success = await handleUpload(item);
+      if (success) {
+        successCount += 1;
+      }
+    }
+    setUploading(false);
+    if (successCount > 0) {
+      message.success(`成功上传 ${successCount} 个文件`);
+      imageStore.loadImages();
+    } else {
+      message.error('上传失败，请重试');
+    }
+  };
+
+  const handleClear = () => {
+    if (files.length === 0) return;
+    files.forEach((item) => revokeImagePreview(item.preview));
+    setFiles([]);
+  };
+
+  const filesRef = useRef<UploadItem[]>([]);
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
+  useEffect(() => {
+    return () => {
+      filesRef.current.forEach((item) => revokeImagePreview(item.preview));
+    };
+  }, []);
+
+  const uploadProps: UploadProps = {
+    multiple: true,
+    accept: 'image/*',
+    showUploadList: false,
+    beforeUpload: (file) => {
+      addFiles([file]);
+      return false;
+    },
+  };
+
+  const canUpload = useMemo(
+    () => files.some((item) => item.status === 'waiting' || item.status === 'error'),
+    [files]
+  );
+
   return (
-    <Card title="上传图片" style={{ maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ marginBottom: 24 }}>
-        <Upload
-          beforeUpload={handleFileChange}
-          showUploadList={false}
-          accept="image/*"
-        >
-          <Button icon={<UploadOutlined />} size="large">
-            选择图片
-          </Button>
-        </Upload>
-      </div>
-
-      {cropperVisible && preview && (
-        <Card
-          title="图片裁剪"
-          extra={
-            <div>
-              <Button onClick={handleCancelCrop} style={{ marginRight: 8 }}>
-                取消
-              </Button>
-              <Button type="primary" onClick={handleConfirmCrop}>
-                确认裁剪
-              </Button>
-            </div>
-          }
-          style={{ marginBottom: 24 }}
-        >
-          <ReactCropper
-            ref={cropperRef}
-            src={preview}
-            style={{ height: 400, width: '100%' }}
-            aspectRatio={1}
-            guides={true}
-            crop={handleCrop}
-            viewMode={1}
-            minCropBoxHeight={100}
-            minCropBoxWidth={100}
-            background={false}
-            responsive={true}
-            autoCropArea={0.8}
-            checkOrientation={false}
-          />
-        </Card>
-      )}
-
-      {croppedImage && !cropperVisible && (
-        <Card
-          title="预览"
-          extra={
-            <Button
-              icon={<DeleteOutlined />}
-              onClick={() => {
-                if (preview) revokeImagePreview(preview);
-                setPreview('');
-                setCroppedImage('');
-                setFile(null);
+    <div
+      style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(180deg, #f5f7fa 0%, #ffffff 100%)',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <PageHeaderBar
+        left={
+          <Space size={12} align="center">
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: 18,
               }}
             >
-              清除
-            </Button>
-          }
-          style={{ marginBottom: 24 }}
-        >
-          <Image src={croppedImage} alt="预览" style={{ maxWidth: '100%' }} />
-          <div style={{ marginTop: 16 }}>
-            <Button
-              type="primary"
-              onClick={handleUpload}
-              loading={loading}
-              size="large"
-              block
-            >
-              上传图片
-            </Button>
-          </div>
-        </Card>
-      )}
-    </Card>
-  );
-});
+              图
+            </div>
+            <div>
+              <div style={{ color: 'white', fontSize: 20, fontWeight: 600 }}>图片上传</div>
+              <Text style={{ color: 'rgba(255, 255, 255, 0.75)' }}>拖拽或选择图片加入上传队列</Text>
+            </div>
+          </Space>
+        }
+        right={
+          <Button icon={<HomeOutlined />} onClick={() => navigate('/home')}>
+            返回主页
+          </Button>
+        }
+      />
+      <div
+        style={{
+          flex: 1,
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'center',
+          padding: '48px 24px',
+        }}
+      >
+        <div style={{ width: '100%', maxWidth: 960 }}>
+          <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            <Card>
+              <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                <Dragger {...uploadProps} style={{ padding: 24 }}>
+                  <p className="ant-upload-drag-icon">
+                    <InboxOutlined />
+                  </p>
+                  <p className="ant-upload-text">拖拽图片到此处</p>
+                  <p className="ant-upload-hint">支持 JPG/PNG/GIF/WebP，单个文件不超过 20MB</p>
+                </Dragger>
 
-export default UploadComponent;
+                <Space wrap>
+                  <Upload {...uploadProps}>
+                    <Button icon={<UploadOutlined />}>选择图片</Button>
+                  </Upload>
+                  <Button
+                    type="primary"
+                    onClick={handleUploadAll}
+                    disabled={!canUpload}
+                    loading={uploading}
+                  >
+                    全部上传
+                  </Button>
+                  <Button onClick={handleClear} disabled={files.length === 0} icon={<DeleteOutlined />}>
+                    清空列表
+                  </Button>
+                </Space>
+              </Space>
+            </Card>
+
+            <Card title={`上传列表 (${files.length})`}>
+              {files.length === 0 ? (
+                <Empty description="当前没有待上传的图片" />
+              ) : (
+                <List
+                  dataSource={files}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: '16px 0' }}>
+                      <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
+                        <Space align="start">
+                          <div
+                            style={{
+                              width: 80,
+                              height: 80,
+                              borderRadius: 8,
+                              overflow: 'hidden',
+                              background: '#f5f5f5',
+                            }}
+                          >
+                            <img
+                              src={item.preview}
+                              alt={item.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          </div>
+                          <Space direction="vertical" size={4}>
+                            <Text strong>{item.name}</Text>
+                            <Text type="secondary">{formatFileSize(item.size)}</Text>
+                            {item.error && <Text type="danger">{item.error}</Text>}
+                          </Space>
+                        </Space>
+
+                        <div style={{ flex: 1, paddingLeft: 32 }}>
+                          <Space
+                            align="center"
+                            style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}
+                          >
+                            <Tag color={STATUS_COLOR[item.status]}>{STATUS_TEXT[item.status]}</Tag>
+                            {item.status === 'error' && (
+                              <Button
+                                type="link"
+                                size="small"
+                                onClick={() => handleUpload(item)}
+                                disabled={uploading}
+                              >
+                                重试
+                              </Button>
+                            )}
+                          </Space>
+                          <Progress
+                            percent={item.percent}
+                            status={
+                              item.status === 'error'
+                                ? 'exception'
+                                : item.status === 'success'
+                                ? 'success'
+                                : item.status === 'waiting'
+                                ? 'normal'
+                                : 'active'
+                            }
+                          />
+                        </div>
+                      </Space>
+                    </List.Item>
+                  )}
+                />
+              )}
+            </Card>
+          </Space>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default UploadPage;
 

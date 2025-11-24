@@ -46,10 +46,11 @@ import {
 } from '@ant-design/icons';
 import type { ImageInfo, Tag as TagType } from '../../types';
 import { formatDateTime, formatFileSize } from '../../utils';
-import { appStore } from '../../store';
+import { userStore } from '../../store';
 import dayjs, { Dayjs } from 'dayjs';
+import PageHeaderBar from '../common/PageHeaderBar';
 
-const { Header, Sider, Content } = Layout;
+const { Sider, Content } = Layout;
 const { RangePicker } = DatePicker;
 const { TabPane } = Tabs;
 
@@ -434,61 +435,55 @@ const HomeComponent = observer(() => {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Header
-        style={{
-          background: '#001529',
-          padding: '0 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+      <PageHeaderBar
+        left={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ 
-              width: 32, 
-              height: 32, 
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'white',
-              fontWeight: 'bold',
-              fontSize: 18
-            }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: 18,
+              }}
+            >
               图
             </div>
             <div style={{ color: 'white', fontSize: '20px', fontWeight: 'bold' }}>
               图片管理系统
             </div>
           </div>
-        </div>
-        <div style={{ flex: 1, maxWidth: 400, margin: '0 24px' }}>
-          <Input
-            placeholder="搜索文件名、标签..."
-            prefix={<SearchOutlined />}
-            value={quickSearch}
-            onChange={(e) => setQuickSearch(e.target.value)}
-            allowClear
-          />
-        </div>
-        <Space>
-          <Button
-            type="primary"
-            icon={<UploadOutlined />}
-            onClick={() => navigate('/upload')}
-          >
-            上传
-          </Button>
-          <Dropdown overlay={userMenu} placement="bottomRight">
-            <Button type="text" style={{ color: 'white' }}>
-              <Avatar size="small" src={appStore.userInfo?.avatar} icon={<UserOutlined />} />
-              <span style={{ marginLeft: 8 }}>{appStore.userInfo?.username || '用户'}</span>
+        }
+        center={
+          <div style={{ width: '100%', maxWidth: 400 }}>
+            <Input
+              placeholder="搜索文件名、标签..."
+              prefix={<SearchOutlined />}
+              value={quickSearch}
+              onChange={(e) => setQuickSearch(e.target.value)}
+              allowClear
+            />
+          </div>
+        }
+        right={
+          <Space>
+            <Button type="primary" icon={<UploadOutlined />} onClick={() => navigate('/upload')}>
+              上传
             </Button>
-          </Dropdown>
-        </Space>
-      </Header>
+            <Dropdown overlay={userMenu} placement="bottomRight">
+              <Button type="text" style={{ color: 'white' }}>
+                <Avatar size="small" src={userStore.user?.avatar} icon={<UserOutlined />} />
+                <span style={{ marginLeft: 8 }}>{userStore.user?.username || '用户'}</span>
+              </Button>
+            </Dropdown>
+          </Space>
+        }
+      />
 
       <Layout>
         <Sider
@@ -845,12 +840,9 @@ const HomeComponent = observer(() => {
                             {image.tags && image.tags.length > 0 && (
                               <div style={{ 
                                 marginBottom: 8,
-                                padding: '6px 8px', 
-                                background: '#f5f5f5', 
-                                borderRadius: 4,
-                                textAlign: 'center',
-                                color: '#666',
-                                fontSize: 11,
+                                textAlign: 'left',
+                                color: '#999',
+                                fontSize: 10,
                               }}>
                                 共 {image.tags.length} 个标签
                               </div>

@@ -29,35 +29,11 @@ import {
 } from '@ant-design/icons';
 import type { ImageInfo, Tag as TagType } from '../../types';
 import { formatDateTime, formatFileSize } from '../../utils';
+import PageHeaderBar from '../common/PageHeaderBar';
+import { generateMockImages, getMockImageById } from '../../mock/images';
 // import { imageApi } from '../../api'; // TODO: 待实现真实API调用
 
-const { Header, Content } = Layout;
-
-// Mock 数据生成函数（用于获取图片列表）
-const generateMockImages = (): ImageInfo[] => {
-  return Array.from({ length: 30 }, (_, i) => {
-    const imageId = `img-${i + 1}`;
-    return {
-      id: imageId,
-      filename: `image-${i + 1}.jpg`,
-      url: `https://picsum.photos/1200/800?random=${i + 1}`,
-      uploadTime: new Date().toISOString(),
-      size: 2500000 + Math.floor(Math.random() * 2000000),
-      tags: [
-        { id: '1', name: '风景', type: 'custom' },
-        { id: '2', name: '旅行', type: 'custom' },
-        { id: '3', name: 'iPhone 14 Pro', type: 'exif' },
-      ],
-      exif: {
-        location: '北京',
-        device: 'iPhone 14 Pro',
-        dateTime: new Date().toISOString(),
-        width: 1920 + Math.floor(Math.random() * 1000),
-        height: 1080 + Math.floor(Math.random() * 1000),
-      },
-    };
-  });
-};
+const { Content } = Layout;
 
 const ImageDetailComponent = observer(() => {
   const { id } = useParams<{ id: string }>();
@@ -111,26 +87,7 @@ const ImageDetailComponent = observer(() => {
         setImage(foundImage);
       } else {
         // 如果找不到，生成一个mock数据
-        const mockImage: ImageInfo = {
-          id: imageId,
-          filename: `image-${imageId}.jpg`,
-          url: `https://picsum.photos/1200/800?random=${imageId}`,
-          uploadTime: new Date().toISOString(),
-          size: 2500000,
-          tags: [
-            { id: '1', name: '风景', type: 'custom' },
-            { id: '2', name: '旅行', type: 'custom' },
-            { id: '3', name: 'iPhone 14 Pro', type: 'exif' },
-          ],
-          exif: {
-            location: '北京',
-            device: 'iPhone 14 Pro',
-            dateTime: new Date().toISOString(),
-            width: 1920,
-            height: 1080,
-          },
-        };
-        setImage(mockImage);
+        setImage(getMockImageById(imageId));
       }
     } catch (error) {
       message.error('加载图片详情失败');
@@ -305,14 +262,31 @@ const ImageDetailComponent = observer(() => {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ background: '#fff', padding: '0 24px', borderBottom: '1px solid #f0f0f0' }}>
-        <Space>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/home')}>
-            返回
-          </Button>
-          <span style={{ fontSize: 16, fontWeight: 500 }}>图片详情</span>
-        </Space>
-      </Header>
+      <PageHeaderBar
+        left={
+          <Space size={12} align="center">
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/home')}>
+              返回
+            </Button>
+            <span style={{ fontSize: 18, fontWeight: 600, color: 'white' }}>图片详情</span>
+          </Space>
+        }
+        center={
+          image ? (
+            <span style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 16 }}>{image.filename}</span>
+          ) : undefined
+        }
+        right={
+          <Space>
+            <Button icon={<EditOutlined />} onClick={handleEdit}>
+              编辑图片
+            </Button>
+            <Button icon={<PlusOutlined />} type="primary" onClick={() => navigate('/upload')}>
+              上传新图片
+            </Button>
+          </Space>
+        }
+      />
       <Content style={{ padding: '24px', background: '#f5f5f5' }}>
         <Row gutter={[24, 24]}>
           {/* 左侧：图片展示 */}
@@ -377,20 +351,6 @@ const ImageDetailComponent = observer(() => {
             </Card>
 
             {/* 标签计数 - 独立区域 */}
-            {image.tags && image.tags.length > 0 && (
-              <div style={{ 
-                marginBottom: 16, 
-                padding: '12px 16px', 
-                background: '#fafafa', 
-                borderRadius: 6,
-                textAlign: 'center',
-                color: '#666',
-                fontSize: 14
-              }}>
-                共 {image.tags.length} 个标签
-              </div>
-            )}
-
             <Card 
               title="标签" 
               style={{ marginBottom: 16 }}
