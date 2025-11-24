@@ -18,6 +18,25 @@ export interface UploadResponse {
   };
 }
 
+// 标签类型
+export type TagType = 'custom' | 'exif' | 'ai';
+
+// 标签信息
+export interface Tag {
+  id: string;
+  name: string;
+  type: TagType;
+}
+
+// EXIF 信息
+export interface ExifInfo {
+  location?: string;
+  device?: string;
+  dateTime?: string;
+  width?: number;
+  height?: number;
+}
+
 // 图片信息类型
 export interface ImageInfo {
   id: string;
@@ -25,6 +44,8 @@ export interface ImageInfo {
   url: string;
   uploadTime: string;
   size?: number;
+  tags?: Tag[];
+  exif?: ExifInfo;
 }
 
 // API 响应基础类型

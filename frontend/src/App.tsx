@@ -1,64 +1,27 @@
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Layout, Menu, ConfigProvider } from 'antd';
-import { UserOutlined, UploadOutlined, EyeOutlined } from '@ant-design/icons';
-import Profile from './components/Profile';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { ConfigProvider } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
 import Upload from './components/Upload';
-import View from './components/View';
+import Home from './components/Home';
+import ImageDetail from './components/View';
 import './App.css';
 
-const { Header, Content } = Layout;
-
 function AppContent() {
-  const location = useLocation();
-  
-  const menuItems = [
-    {
-      key: '/profile',
-      icon: <UserOutlined />,
-      label: <Link to="/profile">个人信息</Link>,
-    },
-    {
-      key: '/upload',
-      icon: <UploadOutlined />,
-      label: <Link to="/upload">上传图片</Link>,
-    },
-    {
-      key: '/view',
-      icon: <EyeOutlined />,
-      label: <Link to="/view">我的图片</Link>,
-    },
-  ];
-
   return (
     <ConfigProvider
+      locale={zhCN}
       theme={{
         token: {
           colorPrimary: '#1890ff',
         },
       }}
     >
-      <Layout style={{ minHeight: '100vh' }}>
-        <Header>
-          <div style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', float: 'left', marginRight: '20px' }}>
-            图片管理系统
-          </div>
-          <Menu
-            theme="dark"
-            mode="horizontal"
-            selectedKeys={[location.pathname]}
-            items={menuItems}
-            style={{ lineHeight: '64px' }}
-          />
-        </Header>
-        <Content style={{ padding: '24px', background: '#f0f2f5' }}>
-          <Routes>
-            <Route path="/" element={<Profile />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/upload" element={<Upload />} />
-            <Route path="/view" element={<View />} />
-          </Routes>
-        </Content>
-      </Layout>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/home" element={<Home />} />
+        <Route path="/upload" element={<Upload />} />
+        <Route path="/image/:id" element={<ImageDetail />} />
+      </Routes>
     </ConfigProvider>
   );
 }
