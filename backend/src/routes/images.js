@@ -8,6 +8,10 @@ import {
   addImageTags,
   removeImageTag,
 } from '../controllers/imageController.js';
+import {
+  generateAiTagsForImage,
+  searchByDialog,
+} from '../controllers/aiController.js';
 import { authenticateToken } from '../middlewares/auth.js';
 import { upload } from '../middlewares/upload.js';
 
@@ -22,6 +26,9 @@ router.post('/upload', upload.single('image'), uploadImage);
 // 获取图片列表（支持查询）
 router.get('/', getImages);
 
+// 对话式检索图片（AI 解析意图）
+router.post('/search/dialog', searchByDialog);
+
 // 获取单张图片详情
 router.get('/:id', getImageById);
 
@@ -33,6 +40,9 @@ router.delete('/:id', deleteImage);
 
 // 为图片添加标签
 router.post('/:id/tags', addImageTags);
+
+// AI 自动生成标签
+router.post('/:id/ai-tags', generateAiTagsForImage);
 
 // 移除图片标签
 router.delete('/:id/tags/:tagId', removeImageTag);

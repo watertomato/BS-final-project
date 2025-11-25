@@ -1,5 +1,5 @@
 import { makeAutoObservable } from 'mobx';
-import { userApi } from '../api';
+import { authApi, userApi } from '../api';
 import type { UserInfo } from '../types';
 
 export class UserStore {
@@ -40,7 +40,7 @@ export class UserStore {
   async fetchUser() {
     try {
       this.setLoading(true);
-      const response = await userApi.getUserInfo();
+      const response = await authApi.getCurrentUser();
       if (response.success && response.data) {
         this.user = response.data;
       }

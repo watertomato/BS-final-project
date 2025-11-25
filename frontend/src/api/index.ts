@@ -40,11 +40,35 @@ api.interceptors.response.use(
   }
 );
 
-// 用户相关 API
+type LoginPayload = {
+  username: string;
+  password: string;
+};
+
+type RegisterPayload = {
+  username: string;
+  email: string;
+  password: string;
+};
+
+// 认证相关 API
+export const authApi = {
+  login: (data: LoginPayload): Promise<ApiResponse<{ token: string; user: UserInfo }>> => {
+    return api.post('/auth/login', data);
+  },
+  register: (data: RegisterPayload): Promise<ApiResponse<UserInfo>> => {
+    return api.post('/auth/register', data);
+  },
+  getCurrentUser: (): Promise<ApiResponse<UserInfo>> => {
+    return api.get('/auth/me');
+  },
+};
+
+// 用户相关 API（预留未来的资料编辑能力）
 export const userApi = {
   // 获取用户信息
   getUserInfo: (): Promise<ApiResponse<UserInfo>> => {
-    return api.get('/user/info');
+    return authApi.getCurrentUser();
   },
 
   // 更新用户信息

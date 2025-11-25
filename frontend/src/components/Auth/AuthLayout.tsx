@@ -12,7 +12,7 @@ type AuthLayoutProps = {
 const AuthLayout = ({ title, subtitle, footer, children }: AuthLayoutProps) => {
   return (
     <div className="auth-page">
-      <Card className="auth-card" bordered={false}>
+      <Card className="auth-card" variant="borderless">
         <div className="auth-logo">图片管理系统</div>
         <Typography.Title level={3} className="auth-title">
           {title}

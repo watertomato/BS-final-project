@@ -1,6 +1,7 @@
-import { makeAutoObservable } from 'mobx';
+import { autorun, makeAutoObservable } from 'mobx';
 import { imageApi } from '../api';
 import type { ImageInfo, Tag, TagType } from '../types';
+import type { UserStore } from './userStore';
 
 export type DateRange = [string | null, string | null] | null;
 
@@ -24,6 +25,7 @@ export interface TagCloudItem extends Tag {
 type TagsByType = Record<TagType, Tag[]>;
 
 export class ImageStore {
+  private readonly userStore: UserStore;
   images: ImageInfo[] = [];
   currentImage: ImageInfo | null = null;
   selectedImages: string[] = [];
@@ -42,9 +44,17 @@ export class ImageStore {
   error: string | null = null;
   selectionMode = false;
 
-  constructor() {
-    makeAutoObservable(this, {}, { autoBind: true });
-    this.loadImages();
+  constructor(userStore: UserStore) {
+    this.userStore = userStore;
+    makeAutoObservable(this, { userStore: false }, { autoBind: true });
+
+    autorun(() => {
+      if (this.userStore.isLoggedIn) {
+        void this.loadImages();
+      } else {
+        this.resetImagesState();
+      }
+    });
   }
 
   get filteredImages() {
@@ -164,6 +174,10 @@ export class ImageStore {
   }
 
   async loadImages() {
+    if (!this.userStore.isLoggedIn) {
+      this.resetImagesState();
+      return;
+    }
     try {
       this.loading = true;
       const response = await imageApi.getAllImages();
@@ -238,6 +252,13 @@ export class ImageStore {
       ...this.pagination,
       total: this.filteredImages.length,
     };
+  }
+
+  private resetImagesState() {
+    this.images = [];
+    this.currentImage = null;
+    this.selectedImages = [];
+    this.pagination = { ...this.pagination, page: 1, total: 0 };
   }
 }
 

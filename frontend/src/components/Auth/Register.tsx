@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Form, Input, Button, message } from 'antd';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from './AuthLayout';
+import { authApi } from '../../api';
 
 type RegisterFormValues = {
   username: string;
@@ -11,11 +13,25 @@ type RegisterFormValues = {
 
 const Register = observer(() => {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (values: RegisterFormValues) => {
-    // TODO: hook up real register API
-    message.success('注册成功，请登录');
-    navigate('/login');
+  const handleSubmit = async (values: RegisterFormValues) => {
+    try {
+      setLoading(true);
+      const response = await authApi.register(values);
+      if (!response.success) {
+        throw new Error(response.message || '注册失败，请稍后重试');
+      }
+
+      message.success(response.message || '注册成功，请登录');
+      navigate('/login');
+    } catch (error: any) {
+      const errorMessage =
+        error?.response?.data?.message || error?.message || '注册失败，请稍后重试';
+      message.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -63,7 +79,7 @@ const Register = observer(() => {
         </Form.Item>
 
         <Form.Item>
-          <Button type="primary" htmlType="submit" block>
+          <Button type="primary" htmlType="submit" block loading={loading} disabled={loading}>
             注册
           </Button>
         </Form.Item>

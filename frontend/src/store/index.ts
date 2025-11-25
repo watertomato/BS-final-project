@@ -7,7 +7,7 @@ class RootStore {
 
   constructor() {
     this.userStore = new UserStore();
-    this.imageStore = new ImageStore();
+    this.imageStore = new ImageStore(this.userStore);
   }
 }
 

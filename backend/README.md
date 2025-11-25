@@ -44,6 +44,18 @@ JWT_EXPIRES_IN="7d"
 
 # Server
 PORT=3000
+
+# AI (可选)
+# 指定供应商: gemini | qwen，不配置则使用本地规则
+AI_PROVIDER=gemini
+GEMINI_API_KEY="your-gemini-api-key"
+GEMINI_VISION_MODEL="gemini-1.5-flash"
+GEMINI_TEXT_MODEL="gemini-1.5-flash"
+
+QWEN_API_KEY="your-qwen-api-key"
+QWEN_MODEL="qwen-vl-plus"
+QWEN_TEXT_ENDPOINT="https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+QWEN_API_ENDPOINT="https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 ```
 
 ### 3. 初始化数据库
@@ -132,6 +144,35 @@ Query Parameters:
   - location: 拍摄地点
 ```
 
+#### 对话式检索图片（AI 意图解析）
+```
+POST /api/images/search/dialog
+Headers: {
+  "Authorization": "Bearer <token>"
+}
+Body: {
+  "query": "去年在重庆的夜景照片",
+  "page": 1,
+  "limit": 20
+}
+Response: {
+  "success": true,
+  "data": [ ... 图片列表 ... ],
+  "filters": {
+    "rawQuery": "去年在重庆的夜景照片",
+    "interpreted": {
+      "keyword": "去年在重庆的夜景照片",
+      "tags": ["夜景","城市"],
+      "location": "重庆",
+      "dateRange": {
+        "start": "2023-01-01T00:00:00.000Z",
+        "end": "2023-12-31T23:59:59.000Z"
+      }
+    }
+  }
+}
+```
+
 #### 获取图片详情
 ```
 GET /api/images/:id
@@ -167,6 +208,26 @@ Headers: {
 }
 Body: {
   "tags": ["风景", "旅游", "海边"]
+}
+```
+
+#### AI 自动生成图片标签
+```
+POST /api/images/:id/ai-tags
+Headers: {
+  "Authorization": "Bearer <token>"
+}
+Body: {
+  "prompt": "请更关注度假和家庭相关标签",
+  "maxTags": 6
+}
+Response: {
+  "success": true,
+  "data": { ...图片详情... },
+  "meta": {
+    "generatedTags": ["亲子","旅行","海边"],
+    "newlyAttached": ["亲子"]
+  }
 }
 ```
 
