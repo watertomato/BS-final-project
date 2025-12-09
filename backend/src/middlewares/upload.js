@@ -27,6 +27,7 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     // 生成唯一文件名: 时间戳-随机数.扩展名
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    // 从原始文件名提取扩展名（multer 会保留原始扩展名）
     const ext = path.extname(file.originalname);
     cb(null, uniqueSuffix + ext);
   }

@@ -66,7 +66,12 @@ export const register = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: '注册成功',
-      data: user,
+      data: {
+        id: user.id.toString(),
+        username: user.username,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
     });
   } catch (error) {
     next(error);
@@ -115,7 +120,7 @@ export const login = async (req, res, next) => {
       data: {
         token,
         user: {
-          id: user.id,
+          id: user.id.toString(),
           username: user.username,
           email: user.email,
         }
@@ -148,7 +153,13 @@ export const getCurrentUser = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: user,
+      data: {
+        id: user.id.toString(),
+        username: user.username,
+        email: user.email,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
     });
   } catch (error) {
     next(error);

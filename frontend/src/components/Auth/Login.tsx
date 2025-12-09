@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
-import { Form, Input, Button, message } from 'antd';
+import { Form, Input, Button, App } from 'antd';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from './AuthLayout';
 import { authApi } from '../../api';
@@ -13,23 +13,45 @@ type LoginFormValues = {
 
 const Login = observer(() => {
   const navigate = useNavigate();
+  const { message } = App.useApp();
+  const [form] = Form.useForm<LoginFormValues>();
   const [loading, setLoading] = useState(false);
+
+  // 如果已登录，重定向到首页
+  useEffect(() => {
+    if (userStore.isLoggedIn) {
+      navigate('/home', { replace: true });
+    }
+  }, [userStore.isLoggedIn, navigate]);
 
   const handleSubmit = async (values: LoginFormValues) => {
     try {
       setLoading(true);
       const response = await authApi.login(values);
-      if (!response.success || !response.data?.token) {
-        throw new Error(response.message || '登录失败，请稍后重试');
+      
+      // 检查响应是否成功
+      if (!response || !response.success || !response.data?.token) {
+        // 如果响应不成功，统一显示错误消息并清空表单
+        message.error('用户不存在或密码错误');
+        form.setFieldsValue({ username: '', password: '' });
+        form.resetFields(['username', 'password']);
+        return;
       }
 
+      // 登录成功
       await userStore.login(response.data.token);
       message.success(response.message || `欢迎回来，${response.data.user.username}`);
       navigate('/home');
     } catch (error: any) {
-      const errorMessage =
-        error?.response?.data?.message || error?.message || '登录失败，请稍后重试';
-      message.error(errorMessage);
+      // 统一显示登录失败的错误消息并清空表单
+      console.error('登录错误详情:', error);
+      
+      // 直接调用 message.error，确保错误消息显示
+      message.error('用户不存在或密码错误');
+      
+      // 清空表单
+      form.setFieldsValue({ username: '', password: '' });
+      form.resetFields(['username', 'password']);
     } finally {
       setLoading(false);
     }
@@ -45,7 +67,7 @@ const Login = observer(() => {
         </span>
       }
     >
-      <Form layout="vertical" onFinish={handleSubmit}>
+      <Form form={form} layout="vertical" onFinish={handleSubmit}>
         <Form.Item
           label="用户名"
           name="username"

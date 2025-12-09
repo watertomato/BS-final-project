@@ -1,62 +1,10 @@
-import fs from 'fs/promises';
-import path from 'path';
+import { callVisionModel, callTextModel, getApiKey, validateConfig } from './llmService.js';
 
-const DEFAULT_MAX_TAGS = 5;
-const MOCK_TAG_POOL = [
-  '风景',
-  '人物',
-  '城市',
-  '建筑',
-  '夜景',
-  '动物',
-  '植物',
-  '旅行',
-  '海边',
-  '山脉',
-  '亲子',
-  '美食',
-  '自拍',
-  '运动'
-];
+const DEFAULT_MAX_TAGS = 10;
 
-const KEYWORD_TAG_MAP = [
-  { tag: '海边', keywords: ['海', '海边', '海滩', '沙滩', 'beach', 'ocean'] },
-  { tag: '山脉', keywords: ['山', '雪山', '山脉', 'mountain'] },
-  { tag: '夜景', keywords: ['夜', '夜景', '夜晚', 'night'] },
-  { tag: '城市', keywords: ['城市', '街道', 'city', 'urban', 'downtown'] },
-  { tag: '建筑', keywords: ['建筑', 'church', 'castle', 'temple', 'bridge'] },
-  { tag: '人物', keywords: ['人物', '人像', 'portrait', '自拍', 'selfie'] },
-  { tag: '动物', keywords: ['动物', '猫', '狗', 'pet', 'animal'] },
-  { tag: '植物', keywords: ['花', '植物', '花朵', 'flower', 'forest'] },
-  { tag: '美食', keywords: ['美食', '食物', 'food', 'dessert', '餐'] },
-  { tag: '亲子', keywords: ['家庭', '小孩', 'baby', 'family', 'kid'] },
-  { tag: '运动', keywords: ['运动', '跑步', '篮球', 'football', 'sport'] },
-  { tag: '旅行', keywords: ['旅行', '旅游', 'trip', 'travel'] }
-];
-
-const ensureFetch = () => {
-  if (typeof fetch !== 'function') {
-    throw new Error('Global fetch is not available. Please use Node.js 18+ or provide a fetch polyfill.');
-  }
-  return fetch;
-};
-
-const detectMimeType = (imagePath) => {
-  const ext = path.extname(imagePath || '').toLowerCase();
-  switch (ext) {
-    case '.png':
-      return 'image/png';
-    case '.gif':
-      return 'image/gif';
-    case '.webp':
-      return 'image/webp';
-    case '.jpg':
-    case '.jpeg':
-    default:
-      return 'image/jpeg';
-  }
-};
-
+/**
+ * 清理和规范化标签
+ */
 const sanitizeTags = (tags = [], maxTags = DEFAULT_MAX_TAGS) => {
   const normalized = [];
   for (const tag of tags) {
@@ -71,6 +19,9 @@ const sanitizeTags = (tags = [], maxTags = DEFAULT_MAX_TAGS) => {
   return Array.from(new Set(normalized)).slice(0, maxTags);
 };
 
+/**
+ * 从 AI 返回的文本中解析标签
+ */
 const parseTagsFromText = (rawText, maxTags) => {
   if (!rawText) return [];
 
@@ -109,223 +60,68 @@ const parseTagsFromText = (rawText, maxTags) => {
   return sanitizeTags(fallback, maxTags);
 };
 
-const buildDefaultPrompt = (maxTags) =>
-  `你是一名图片标注专家。请分析图片内容，给出不超过 ${maxTags} 个简短的中文标签，使用 JSON 数组输出，例如 ["风景","海边"]。`;
-
-const callGeminiVision = async (imagePath, prompt, maxTags) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY 未配置');
+/**
+ * 构建默认的标签生成提示词
+ * @param {number} maxTags - 最大标签数量
+ * @param {string[]} existingTags - 已有的标签列表
+ * @returns {string} 提示词
+ */
+const buildDefaultPrompt = (maxTags, existingTags = []) => {
+  let prompt = `你是一名图片标注专家。请分析图片内容，给出不超过 ${maxTags} 个简短的中文标签。\n\n`;
+  
+  if (existingTags && existingTags.length > 0) {
+    prompt += `**重要：优先从以下已有标签中选择**（如果标签能准确描述图片内容）：\n`;
+    prompt += `${existingTags.join('、')}\n\n`;
+    prompt += `**规则：**\n`;
+    prompt += `1. 优先从上述已有标签中选择最合适的标签（可以选多个）\n`;
+    prompt += `2. 如果已有标签中没有合适的，再自行创造新的标签\n`;
+    prompt += `3. 最终输出不超过 ${maxTags} 个标签\n\n`;
+  } else {
+    prompt += `请直接分析图片内容，创造合适的标签。\n\n`;
   }
-
-  const fetchFn = ensureFetch();
-  const fileBuffer = await fs.readFile(imagePath);
-  const base64 = fileBuffer.toString('base64');
-  const mimeType = detectMimeType(imagePath);
-  const model = process.env.GEMINI_VISION_MODEL || 'gemini-1.5-flash';
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const body = {
-    contents: [
-      {
-        parts: [
-          { text: prompt || buildDefaultPrompt(maxTags) },
-          { inlineData: { mimeType, data: base64 } }
-        ]
-      }
-    ]
-  };
-
-  const response = await fetchFn(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-
-  const result = await response.json();
-  if (!response.ok) {
-    throw new Error(result?.error?.message || 'Gemini Vision API 调用失败');
-  }
-
-  const text = result?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text)
-    .filter(Boolean)
-    .join('\n');
-
-  return parseTagsFromText(text, maxTags);
+  
+  prompt += `**输出格式：**使用 JSON 数组输出，例如 ["风景","海边"]。只返回 JSON 数组，不要其他文字。`;
+  
+  return prompt;
 };
 
-const callQwenVision = async (imagePath, prompt, maxTags) => {
-  const apiKey = process.env.QWEN_API_KEY;
-  if (!apiKey) {
-    throw new Error('QWEN_API_KEY 未配置');
-  }
+/**
+ * 生成 AI 标签
+ * @param {string} imagePath - 图片路径
+ * @param {object} options - 选项
+ * @param {string} options.prompt - 自定义提示词
+ * @param {number} options.maxTags - 最大标签数量
+ * @param {string[]} options.existingTags - 已有的标签列表，LLM 会优先从这些标签中选择
+ * @returns {Promise<string[]>} 返回标签数组
+ */
+export const generateAiTags = async (imagePath, options = {}) => {
+  const maxTags = Math.min(Math.max(options.maxTags || DEFAULT_MAX_TAGS, 1), 20);
+  const model = process.env.AI_MODEL;
 
-  const fetchFn = ensureFetch();
-  const fileBuffer = await fs.readFile(imagePath);
-  const base64 = fileBuffer.toString('base64');
-  const mimeType = detectMimeType(imagePath);
-  const model = process.env.QWEN_MODEL || 'qwen-vl-plus';
-  const endpoint =
-    process.env.QWEN_API_ENDPOINT ||
-    'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
+  // 验证配置
+  validateConfig(model);
 
-  const payload = {
-    model,
-    input: {
-      messages: [
-        {
-          role: 'system',
-          content: [{ text: '你是一名专业的图像理解助手。' }]
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              image: {
-                format: mimeType,
-                data: base64
-              }
-            },
-            {
-              text: prompt || buildDefaultPrompt(maxTags)
-            }
-          ]
-        }
-      ]
-    },
-    parameters: {
-      result_format: 'text'
+  const apiKey = getApiKey();
+  const existingTags = options.existingTags || [];
+  const prompt = options.prompt || buildDefaultPrompt(maxTags, existingTags);
+
+  try {
+    const text = await callVisionModel(imagePath, prompt, model, apiKey);
+    const tags = parseTagsFromText(text, maxTags);
+    
+    if (tags && tags.length > 0) {
+      return tags;
     }
-  };
-
-  const response = await fetchFn(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(payload)
-  });
-
-  const result = await response.json();
-  if (!response.ok) {
-    throw new Error(result?.message || 'Qwen 多模态接口调用失败');
+    throw new Error('AI 未能生成有效标签');
+  } catch (error) {
+    console.error('AI 标签生成失败:', error);
+    throw error;
   }
-
-  const choices = result?.output?.choices || result?.choices || [];
-  const text =
-    choices[0]?.message?.content
-      ?.map((item) => item?.text)
-      .filter(Boolean)
-      .join('\n') || '';
-
-  return parseTagsFromText(text, maxTags);
 };
 
-const deriveTagsFromText = (text) => {
-  if (!text) return [];
-  const lower = text.toLowerCase();
-  const tags = new Set();
-
-  for (const rule of KEYWORD_TAG_MAP) {
-    if (
-      rule.keywords.some(
-        (keyword) => lower.includes(keyword.toLowerCase()) || text.includes(keyword)
-      )
-    ) {
-      tags.add(rule.tag);
-    }
-  }
-
-  return Array.from(tags);
-};
-
-const buildMockTags = (imagePath, maxTags, options = {}) => {
-  const guessSource = [
-    path.basename(imagePath || ''),
-    options.filename || '',
-    options.prompt || ''
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  const derived = deriveTagsFromText(guessSource);
-  const tags = new Set(derived);
-
-  // 填充随机标签
-  const pool = MOCK_TAG_POOL.filter((tag) => !tags.has(tag));
-  for (const tag of pool) {
-    if (tags.size >= maxTags) break;
-    tags.add(tag);
-  }
-
-  return Array.from(tags).slice(0, maxTags);
-};
-
-const buildDateRange = (query) => {
-  if (!query) return null;
-  const lower = query.toLowerCase();
-  const now = new Date();
-
-  const createRange = (start, end) => ({
-    start,
-    end
-  });
-
-  if (lower.includes('去年') || lower.includes('last year')) {
-    const year = now.getFullYear() - 1;
-    return createRange(new Date(year, 0, 1), new Date(year, 11, 31, 23, 59, 59));
-  }
-
-  if (lower.includes('今年') || lower.includes('this year')) {
-    const year = now.getFullYear();
-    return createRange(new Date(year, 0, 1), new Date(year, 11, 31, 23, 59, 59));
-  }
-
-  if (lower.includes('上个月') || lower.includes('last month')) {
-    const month = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const end = new Date(month.getFullYear(), month.getMonth() + 1, 0, 23, 59, 59);
-    return createRange(month, end);
-  }
-
-  const yearMatch = query.match(/(20\d{2})/);
-  if (yearMatch) {
-    const year = parseInt(yearMatch[1], 10);
-    return createRange(new Date(year, 0, 1), new Date(year, 11, 31, 23, 59, 59));
-  }
-
-  return null;
-};
-
-const parseLocation = (query) => {
-  if (!query) return null;
-  const zhMatch = query.match(/在([\u4e00-\u9fa5A-Za-z\s]{2,20})/);
-  if (zhMatch) {
-    return zhMatch[1].replace(/(拍的?|照的?|上)/, '').trim();
-  }
-
-  const enMatch = query.match(/in\s+([A-Za-z\s]{2,30})/i);
-  if (enMatch) {
-    return enMatch[1].trim();
-  }
-
-  return null;
-};
-
-const heuristicInterpret = (query) => {
-  const tags = deriveTagsFromText(query);
-  const dateRange = buildDateRange(query);
-  const location = parseLocation(query);
-
-  return {
-    keyword: query?.trim() || '',
-    tags,
-    location,
-    dateRange
-  };
-};
-
+/**
+ * 解析结构化过滤器（从 AI 返回的 JSON 中提取搜索条件）
+ */
 const parseStructuredFilters = (text) => {
   if (!text) return null;
   const objectMatch = text.match(/\{.*\}/s);
@@ -344,8 +140,8 @@ const parseStructuredFilters = (text) => {
       };
     }
 
+    // 移除 keyword 字段，只返回 tags, location, dateRange
     return {
-      keyword: obj.keyword?.trim() || obj.query?.trim() || '',
       tags,
       location,
       dateRange
@@ -356,135 +152,117 @@ const parseStructuredFilters = (text) => {
   }
 };
 
-const buildSearchPrompt = (query) =>
-  `请将以下自然语言查询转换为 JSON。格式: {"keyword":"","tags":[],"location":"","dateRange":{"start":"","end":""}}。只返回 JSON，查询内容: ${query}`;
-
-const callGeminiText = async (query) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY 未配置');
+/**
+ * 构建搜索查询提示词
+ * @param {string} query - 用户输入的搜索查询
+ * @param {string[]} availableTags - 可用的标签列表
+ * @param {string[]} availableLocations - 可用的地点列表
+ * @returns {string} 提示词
+ */
+const buildSearchPrompt = (query, availableTags = [], availableLocations = []) => {
+  let prompt = `你是一个图片搜索助手。请将用户的自然语言查询转换为结构化的搜索条件。\n\n`;
+  
+  prompt += `**用户查询：**${query}\n\n`;
+  
+  // 如果有可用的标签，告诉 LLM
+  if (availableTags && availableTags.length > 0) {
+    prompt += `**可用的标签列表：**\n`;
+    prompt += `${availableTags.join('、')}\n\n`;
+    prompt += `**标签选择规则：**\n`;
+    prompt += `- 从上述标签列表中选择与查询相关的标签（可以选多个）\n`;
+    prompt += `- 如果列表中没有合适的标签，可以留空 []\n\n`;
+  } else {
+    prompt += `**标签选择规则：**\n`;
+    prompt += `- 根据查询内容，提取相关的标签关键词\n`;
+    prompt += `- 如果没有相关标签，可以留空 []\n\n`;
   }
-
-  const fetchFn = ensureFetch();
-  const model = process.env.GEMINI_TEXT_MODEL || 'gemini-1.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-  const response = await fetchFn(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: buildSearchPrompt(query) }] }]
-    })
-  });
-
-  const result = await response.json();
-  if (!response.ok) {
-    throw new Error(result?.error?.message || 'Gemini 文本接口调用失败');
+  
+  // 如果有可用的地点，告诉 LLM
+  if (availableLocations && availableLocations.length > 0) {
+    prompt += `**可用的地点列表：**\n`;
+    prompt += `${availableLocations.filter(loc => loc).join('、')}\n\n`;
+    prompt += `**地点选择规则：**\n`;
+    prompt += `- 优先从上述地点列表中选择与查询相关的地点\n`;
+    prompt += `- 如果列表中没有合适的地点，可以留空 ""\n\n`;
+  } else {
+    prompt += `**地点选择规则：**\n`;
+    prompt += `- 根据查询内容，提取相关的地点信息\n`;
+    prompt += `- 如果没有相关地点，可以留空 ""\n\n`;
   }
-
-  const text = result?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text)
-    .filter(Boolean)
-    .join('\n');
-
-  return parseStructuredFilters(text);
+  
+  prompt += `**日期范围规则：**\n`;
+  prompt += `- 如果查询中包含时间信息（如"去年"、"2023年"、"上个月"等），转换为日期范围\n`;
+  prompt += `- 日期格式：ISO 8601 格式（如 "2023-01-01T00:00:00.000Z"）\n`;
+  prompt += `- 如果没有时间信息，可以留空 {"start":"","end":""}\n\n`;
+  
+  prompt += `**重要说明：**\n`;
+  prompt += `- 你可以只填写部分字段，其他字段可以留空\n`;
+  prompt += `- tags 可以是空数组 []\n`;
+  prompt += `- location 可以是空字符串 ""\n`;
+  prompt += `- dateRange 可以是 {"start":"","end":""}\n\n`;
+  
+  prompt += `**输出格式：**只返回 JSON 对象，格式如下：\n`;
+  prompt += `{"tags":[],"location":"","dateRange":{"start":"","end":""}}\n\n`;
+  prompt += `**注意：**不要输出 keyword 字段，只输出 tags、location 和 dateRange。`;
+  
+  return prompt;
 };
 
-const callQwenText = async (query) => {
-  const apiKey = process.env.QWEN_API_KEY;
-  if (!apiKey) {
-    throw new Error('QWEN_API_KEY 未配置');
-  }
-
-  const fetchFn = ensureFetch();
-  const model = process.env.QWEN_MODEL || 'qwen-long';
-  const endpoint =
-    process.env.QWEN_TEXT_ENDPOINT ||
-    'https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation';
-
-  const payload = {
-    model,
-    input: {
-      prompt: buildSearchPrompt(query)
-    }
-  };
-
-  const response = await fetchFn(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(payload)
-  });
-
-  const result = await response.json();
-  if (!response.ok) {
-    throw new Error(result?.message || 'Qwen 文本接口调用失败');
-  }
-
-  const text =
-    result?.output?.text ||
-    result?.output?.choices?.[0]?.message?.content?.map((item) => item?.text).join('\n') ||
-    '';
-
-  return parseStructuredFilters(text);
-};
-
-export const generateAiTags = async (imagePath, options = {}) => {
-  const maxTags = Math.min(Math.max(options.maxTags || DEFAULT_MAX_TAGS, 1), 10);
-  const provider = (process.env.AI_PROVIDER || '').toLowerCase();
-
-  try {
-    if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
-      const tags = await callGeminiVision(imagePath, options.prompt, maxTags);
-      if (tags.length) return tags;
-    }
-
-    if (provider === 'qwen' && process.env.QWEN_API_KEY) {
-      const tags = await callQwenVision(imagePath, options.prompt, maxTags);
-      if (tags.length) return tags;
-    }
-  } catch (error) {
-    console.error('AI 标签生成失败，使用本地推断:', error);
-  }
-
-  return buildMockTags(imagePath, maxTags, options);
-};
-
-export const interpretSearchQuery = async (query) => {
+/**
+ * 解析搜索查询意图
+ * @param {string} query - 用户输入的搜索查询
+ * @param {object} options - 选项
+ * @param {string[]} options.availableTags - 可用的标签列表
+ * @param {string[]} options.availableLocations - 可用的地点列表
+ * @returns {Promise<object>} 返回解析后的搜索条件，包含 tags, location, dateRange（不包含 keyword）
+ */
+export const interpretSearchQuery = async (query, options = {}) => {
   if (!query || !query.trim()) {
     return {
-      keyword: '',
       tags: [],
       location: null,
       dateRange: null
     };
   }
 
-  const provider = (process.env.AI_PROVIDER || '').toLowerCase();
+  const model = process.env.AI_MODEL;
+
+  // 验证配置
+  validateConfig(model);
+
+  const apiKey = getApiKey();
+  const availableTags = options.availableTags || [];
+  const availableLocations = options.availableLocations || [];
+  const prompt = buildSearchPrompt(query, availableTags, availableLocations);
 
   try {
-    if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
-      const structured = await callGeminiText(query);
-      if (structured) {
-        structured.keyword = structured.keyword || query.trim();
-        return structured;
-      }
+    console.log('=== AI 搜索调试信息 ===');
+    console.log('用户查询:', query);
+    console.log('可用标签数量:', availableTags.length);
+    console.log('可用地点数量:', availableLocations.length);
+    console.log('使用的模型:', model);
+    
+    const text = await callTextModel(prompt, model, apiKey);
+    
+    console.log('LLM 原始返回内容:');
+    console.log(text);
+    console.log('---');
+    
+    const structured = parseStructuredFilters(text);
+    
+    if (structured) {
+      console.log('解析后的结构化数据:');
+      console.log(JSON.stringify(structured, null, 2));
+      console.log('=== AI 搜索调试信息结束 ===\n');
+      return structured;
     }
-
-    if (provider === 'qwen' && process.env.QWEN_API_KEY) {
-      const structured = await callQwenText(query);
-      if (structured) {
-        structured.keyword = structured.keyword || query.trim();
-        return structured;
-      }
-    }
+    
+    console.error('解析失败：未能从 LLM 返回内容中提取结构化数据');
+    console.log('=== AI 搜索调试信息结束 ===\n');
+    throw new Error('AI 未能解析查询意图');
   } catch (error) {
-    console.error('AI 检索意图解析失败，使用启发式规则:', error);
+    console.error('AI 检索意图解析失败:', error);
+    console.log('=== AI 搜索调试信息结束 ===\n');
+    throw error;
   }
-
-  return heuristicInterpret(query);
 };
-
-

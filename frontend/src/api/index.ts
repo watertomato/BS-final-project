@@ -32,10 +32,17 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
+    // 401 错误处理：只有在已登录状态下访问受保护资源时才重定向
+    // 登录接口的 401 错误不应该重定向，应该让组件处理错误消息
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+      const token = localStorage.getItem('token');
+      // 如果有 token 但请求失败，说明 token 过期或无效，需要重新登录
+      if (token && !error.config?.url?.includes('/auth/login')) {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }
     }
+    // 返回错误对象，让调用方可以访问 error.response.data
     return Promise.reject(error);
   }
 );
@@ -88,6 +95,28 @@ export const userApi = {
   },
 };
 
+// 图片查询参数
+type ImageQueryParams = {
+  page?: number;
+  limit?: number;
+  keyword?: string;
+  startDate?: string;
+  endDate?: string;
+  tags?: string | string[];
+  location?: string;
+};
+
+// 图片列表响应
+type ImageListResponse = {
+  images: ImageInfo[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
 // 图片相关 API
 export const imageApi = {
   // 上传图片
@@ -105,9 +134,9 @@ export const imageApi = {
     });
   },
 
-  // 获取所有图片
-  getAllImages: (): Promise<ApiResponse<ImageInfo[]>> => {
-    return api.get('/images');
+  // 获取图片列表（支持查询参数）
+  getImages: (params?: ImageQueryParams): Promise<ApiResponse<ImageListResponse>> => {
+    return api.get('/images', { params });
   },
 
   // 获取单个图片信息
@@ -115,9 +144,71 @@ export const imageApi = {
     return api.get(`/images/${imageId}`);
   },
 
+  // 下载图片
+  downloadImage: (imageId: string): Promise<Blob> => {
+    return api.get(`/images/${imageId}/download`, {
+      responseType: 'blob',
+    });
+  },
+
   // 删除图片
   deleteImage: (imageId: string): Promise<ApiResponse<void>> => {
     return api.delete(`/images/${imageId}`);
+  },
+
+  // 更新图片信息
+  updateImage: (imageId: string, data: { originalFilename?: string }): Promise<ApiResponse<ImageInfo>> => {
+    return api.put(`/images/${imageId}`, data);
+  },
+
+  // 替换图片文件（用于编辑后保存）
+  replaceImageFile: (imageId: string, file: File): Promise<ApiResponse<ImageInfo>> => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return api.post(`/images/${imageId}/replace`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+
+  // 为图片添加标签
+  addImageTags: (imageId: string, tags: string[]): Promise<ApiResponse<ImageInfo>> => {
+    return api.post(`/images/${imageId}/tags`, { tags });
+  },
+
+  // 移除图片标签
+  removeImageTag: (imageId: string, tagId: string): Promise<ApiResponse<void>> => {
+    return api.delete(`/images/${imageId}/tags/${tagId}`);
+  },
+
+  // AI 自动生成标签
+  generateAiTags: (imageId: string, options?: { prompt?: string; maxTags?: number }): Promise<ApiResponse<ImageInfo>> => {
+    return api.post(`/images/${imageId}/ai-tags`, options || {});
+  },
+
+  // AI 对话式搜索
+  searchByDialog: (params: { query: string; page?: number; limit?: number }): Promise<ApiResponse<{
+    images: ImageInfo[];
+    filters: {
+      rawQuery: string;
+      interpreted: {
+        tags: string[];
+        location: string | null;
+        dateRange: {
+          start: string | null;
+          end: string | null;
+        } | null;
+      };
+    };
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }>> => {
+    return api.post('/images/search/dialog', params);
   },
 };
 

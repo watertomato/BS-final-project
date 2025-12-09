@@ -47,12 +47,44 @@ export const extractExif = async (imagePath) => {
     // GPS 位置信息
     if (tags.GPSLatitude && tags.GPSLongitude) {
       try {
-        const lat = tags.GPSLatitude.description;
-        const lng = tags.GPSLongitude.description;
-        exifData.location = `${lat}, ${lng}`;
+        // ExifReader 返回的 GPS 坐标可能是数组格式 [度, 分, 秒] 或直接是数值
+        let lat, lng;
         
-        // 如果有城市或地区信息
-        if (tags.GPSDestLatitude?.description) {
+        // 尝试从 description 获取（如果是字符串格式）
+        if (tags.GPSLatitude.description && tags.GPSLongitude.description) {
+          lat = tags.GPSLatitude.description;
+          lng = tags.GPSLongitude.description;
+        } 
+        // 如果 description 不存在，尝试从 value 获取
+        else if (tags.GPSLatitude.value && tags.GPSLongitude.value) {
+          // GPS 坐标可能是数组 [度, 分, 秒] 格式
+          if (Array.isArray(tags.GPSLatitude.value) && Array.isArray(tags.GPSLongitude.value)) {
+            // 转换为十进制度数
+            const latDeg = tags.GPSLatitude.value[0] || 0;
+            const latMin = tags.GPSLatitude.value[1] || 0;
+            const latSec = tags.GPSLatitude.value[2] || 0;
+            lat = latDeg + latMin / 60 + latSec / 3600;
+            
+            const lngDeg = tags.GPSLongitude.value[0] || 0;
+            const lngMin = tags.GPSLongitude.value[1] || 0;
+            const lngSec = tags.GPSLongitude.value[2] || 0;
+            lng = lngDeg + lngMin / 60 + lngSec / 3600;
+        
+            // 处理南纬和西经
+            if (tags.GPSLatitudeRef?.description === 'S') lat = -lat;
+            if (tags.GPSLongitudeRef?.description === 'W') lng = -lng;
+            
+            lat = lat.toFixed(6);
+            lng = lng.toFixed(6);
+          } else {
+            lat = tags.GPSLatitude.value;
+            lng = tags.GPSLongitude.value;
+          }
+        }
+        
+        if (lat && lng) {
+          exifData.location = `${lat}, ${lng}`;
+          // 添加 GPS 定位标签
           exifData.tags.push('GPS定位');
         }
       } catch (err) {

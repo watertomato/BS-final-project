@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Form, Input, Button, message } from 'antd';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from './AuthLayout';
 import { authApi } from '../../api';
+import { userStore } from '../../store';
 
 type RegisterFormValues = {
   username: string;
@@ -14,6 +15,13 @@ type RegisterFormValues = {
 const Register = observer(() => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+
+  // 如果已登录，重定向到首页
+  useEffect(() => {
+    if (userStore.isLoggedIn) {
+      navigate('/home', { replace: true });
+    }
+  }, [userStore.isLoggedIn, navigate]);
 
   const handleSubmit = async (values: RegisterFormValues) => {
     try {

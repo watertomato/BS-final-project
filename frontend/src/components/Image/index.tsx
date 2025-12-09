@@ -26,23 +26,88 @@ import {
   RightOutlined,
   PlusOutlined,
   RobotOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
-import type { ImageInfo, Tag as TagType } from '../../types';
+import type { ImageInfo } from '../../types';
 import { formatDateTime, formatFileSize } from '../../utils';
+import { imageApi } from '../../api';
 import PageHeaderBar from '../common/PageHeaderBar';
-import { generateMockImages, getMockImageById } from '../../mock/images';
-// import { imageApi } from '../../api'; // TODO: 待实现真实API调用
 
 const { Content } = Layout;
+
+// 将后端数据格式转换为前端格式
+const transformImageData = (image: any): ImageInfo => {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+  
+  return {
+    id: image.id,
+    filename: image.originalFilename,
+    url: `${API_BASE_URL}/${image.storedPath}`,
+    uploadTime: image.createdAt,
+    size: image.fileSize ? parseInt(image.fileSize) : undefined,
+    tags: image.tags?.map((tag: any) => ({
+      id: tag.id,
+      name: tag.name,
+      type: tag.type,
+    })) || [],
+    exif: {
+      location: image.location || undefined,
+      device: image.deviceInfo || undefined,
+      dateTime: image.shootingTime || undefined,
+      width: image.resolution ? parseInt(image.resolution.split('x')[0]) : undefined,
+      height: image.resolution ? parseInt(image.resolution.split('x')[1]) : undefined,
+    },
+  };
+};
 
 const ImageDetailComponent = observer(() => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [image, setImage] = useState<ImageInfo | null>(null);
-  const [allImages] = useState<ImageInfo[]>(generateMockImages());
+  const [allImages, setAllImages] = useState<ImageInfo[]>([]);
   const [newTagName, setNewTagName] = useState('');
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [editFilenameVisible, setEditFilenameVisible] = useState(false);
+  const [newFilename, setNewFilename] = useState('');
+
+  useEffect(() => {
+    if (id) {
+      loadImageDetail(id);
+      loadAllImages();
+    }
+  }, [id]);
+
+  const loadAllImages = async () => {
+    try {
+      const response = await imageApi.getImages({ limit: 1000 });
+      if (response.success && response.data) {
+        const transformedImages = response.data.images.map(transformImageData);
+        setAllImages(transformedImages);
+      }
+    } catch (error) {
+      console.error('加载图片列表失败:', error);
+    }
+  };
+
+  const loadImageDetail = async (imageId: string) => {
+    try {
+      setLoading(true);
+      const response = await imageApi.getImageInfo(imageId);
+      if (response.success && response.data) {
+        setImage(transformImageData(response.data));
+      } else {
+        message.error('图片不存在');
+        navigate('/home');
+      }
+    } catch (error: any) {
+      message.error('加载图片详情失败');
+      console.error(error);
+      navigate('/home');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // 获取当前图片在列表中的索引
   const currentIndex = useMemo(() => {
@@ -50,52 +115,24 @@ const ImageDetailComponent = observer(() => {
     return allImages.findIndex((img) => img.id === image.id);
   }, [image, allImages]);
 
-  // 上一张和下一张的ID
+  // 上一张和下一张的ID（循环浏览）
   const prevImageId = useMemo(() => {
-    if (currentIndex > 0) {
-      return allImages[currentIndex - 1]?.id;
+    if (allImages.length === 0) return null;
+    if (currentIndex <= 0) {
+      // 如果是第一张，返回最后一张
+      return allImages[allImages.length - 1]?.id;
     }
-    return null;
+    return allImages[currentIndex - 1]?.id;
   }, [currentIndex, allImages]);
 
   const nextImageId = useMemo(() => {
-    if (currentIndex >= 0 && currentIndex < allImages.length - 1) {
-      return allImages[currentIndex + 1]?.id;
+    if (allImages.length === 0) return null;
+    if (currentIndex >= allImages.length - 1) {
+      // 如果是最后一张，返回第一张
+      return allImages[0]?.id;
     }
-    return null;
+    return allImages[currentIndex + 1]?.id;
   }, [currentIndex, allImages]);
-
-  useEffect(() => {
-    if (id) {
-      loadImageDetail(id);
-    }
-  }, [id]);
-
-
-  const loadImageDetail = async (imageId: string) => {
-    try {
-      setLoading(true);
-      // TODO: 替换为真实API调用
-      // const response = await imageApi.getImageInfo(imageId);
-      // if (response.success && response.data) {
-      //   setImage(response.data);
-      // }
-      
-      // Mock 数据 - 从allImages中查找或生成
-      const foundImage = allImages.find((img) => img.id === imageId);
-      if (foundImage) {
-        setImage(foundImage);
-      } else {
-        // 如果找不到，生成一个mock数据
-        setImage(getMockImageById(imageId));
-      }
-    } catch (error) {
-      message.error('加载图片详情失败');
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // 导航到上一张
   const handlePrev = () => {
@@ -112,7 +149,7 @@ const ImageDetailComponent = observer(() => {
   };
 
   // 添加标签
-  const handleAddTag = () => {
+  const handleAddTag = async () => {
     if (!newTagName.trim() || !image) return;
     
     // 检查标签是否已存在
@@ -122,33 +159,35 @@ const ImageDetailComponent = observer(() => {
       return;
     }
 
-    const newTag: TagType = {
-      id: `tag-${Date.now()}`,
-      name: newTagName.trim(),
-      type: 'custom',
-    };
-
-    setImage({
-      ...image,
-      tags: [...(image.tags || []), newTag],
-    });
-
-    setNewTagName('');
-    message.success('标签添加成功');
-    // TODO: 调用API保存标签
+    try {
+      const response = await imageApi.addImageTags(image.id, [newTagName.trim()]);
+      if (response.success && response.data) {
+        setImage(transformImageData(response.data));
+        setNewTagName('');
+        message.success('标签添加成功');
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '添加标签失败');
+      console.error(error);
+    }
   };
 
   // 删除标签
-  const handleDeleteTag = (tagId: string) => {
+  const handleDeleteTag = async (tagId: string) => {
     if (!image) return;
 
-    setImage({
-      ...image,
-      tags: image.tags?.filter((tag) => tag.id !== tagId) || [],
-    });
+    const tag = image.tags?.find((t) => t.id === tagId);
+    if (!tag) return;
 
-    message.success('标签删除成功');
-    // TODO: 调用API删除标签
+    try {
+      await imageApi.removeImageTag(image.id, tagId);
+      // 重新加载图片详情
+      await loadImageDetail(image.id);
+      message.success('标签删除成功');
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '删除标签失败');
+      console.error(error);
+    }
   };
 
   // AI分析生成标签
@@ -157,45 +196,23 @@ const ImageDetailComponent = observer(() => {
 
     setAiAnalyzing(true);
     try {
-      // TODO: 调用真实AI分析API
-      // const response = await imageApi.aiAnalyze(image.id);
-      // if (response.success && response.data?.tags) {
-      //   const aiTags = response.data.tags.map((name: string) => ({
-      //     id: `ai-${Date.now()}-${Math.random()}`,
-      //     name,
-      //     type: 'ai' as TagType,
-      //   }));
-      //   setImage({
-      //     ...image,
-      //     tags: [...(image.tags || []), ...aiTags],
-      //   });
-      //   message.success('AI分析完成');
-      // }
-
-      // Mock AI分析结果
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      const mockAiTags: TagType[] = [
-        { id: `ai-${Date.now()}-1`, name: '自然风光', type: 'ai' },
-        { id: `ai-${Date.now()}-2`, name: '户外', type: 'ai' },
-        { id: `ai-${Date.now()}-3`, name: '风景摄影', type: 'ai' },
-      ];
-
-      // 合并新标签，避免重复
-      const existingTagNames = new Set(image.tags?.map((t) => t.name) || []);
-      const newTags = mockAiTags.filter((tag) => !existingTagNames.has(tag.name));
-
-      if (newTags.length > 0) {
-        setImage({
-          ...image,
-          tags: [...(image.tags || []), ...newTags],
-        });
-        message.success(`AI分析完成，生成了 ${newTags.length} 个新标签`);
+      const response = await imageApi.generateAiTags(image.id);
+      if (response.success && response.data) {
+        // 重新加载图片详情以获取最新标签
+        await loadImageDetail(image.id);
+        // 从响应消息中判断是否有新标签
+        const messageText = response.message || '';
+        if (messageText.includes('成功') || messageText.includes('生成')) {
+          message.success(response.message || 'AI分析完成');
+        } else {
+          message.info(response.message || 'AI分析完成，但未发现新标签');
+        }
       } else {
-        message.info('AI分析完成，但未发现新标签');
+        message.error(response.message || 'AI分析失败');
       }
-    } catch (error) {
-      message.error('AI分析失败');
-      console.error(error);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'AI分析失败');
+      console.error('AI分析失败:', error);
     } finally {
       setAiAnalyzing(false);
     }
@@ -207,39 +224,75 @@ const ImageDetailComponent = observer(() => {
     }
   };
 
-  const handleDownload = () => {
-    if (image) {
-      // 创建临时链接下载
+  const handleDownload = async () => {
+    if (!image) return;
+
+    try {
+      // 调用下载接口获取文件 blob
+      const blob = await imageApi.downloadImage(image.id);
+      
+      // 创建 blob URL
+      const url = window.URL.createObjectURL(blob);
+      
+      // 创建临时链接并触发下载
       const link = document.createElement('a');
-      link.href = image.url;
+      link.href = url;
       link.download = image.filename;
       document.body.appendChild(link);
       link.click();
+      
+      // 清理
       document.body.removeChild(link);
-      message.success('开始下载');
+      window.URL.revokeObjectURL(url);
+      
+      message.success('下载开始');
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '下载失败');
+      console.error('下载失败:', error);
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
+    if (!image) return;
+
+    try {
+      await imageApi.deleteImage(image.id);
+      message.success('删除成功');
+      navigate('/home');
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '删除失败');
+      console.error(error);
+    }
+  };
+
+  // 打开修改文件名对话框
+  const handleOpenEditFilename = () => {
     if (image) {
-      Modal.confirm({
-        title: '确认删除',
-        content: `确定要删除图片 "${image.filename}" 吗？此操作不可恢复。`,
-        okText: '删除',
-        okType: 'danger',
-        cancelText: '取消',
-        onOk: async () => {
-          try {
-            // TODO: 调用删除API
-            // await imageApi.deleteImage(image.id);
-            message.success('删除成功');
-            navigate('/home');
-          } catch (error) {
-            message.error('删除失败');
-            console.error(error);
-          }
-        },
+      setNewFilename(image.filename);
+      setEditFilenameVisible(true);
+    }
+  };
+
+  // 保存修改的文件名
+  const handleSaveFilename = async () => {
+    if (!image || !newFilename.trim()) {
+      message.warning('文件名不能为空');
+      return;
+    }
+
+    try {
+      const response = await imageApi.updateImage(image.id, {
+        originalFilename: newFilename.trim(),
       });
+      if (response.success && response.data) {
+        message.success('文件名修改成功');
+        setEditFilenameVisible(false);
+        // 重新加载图片详情
+        await loadImageDetail(image.id);
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '修改文件名失败');
+      console.error(error);
     }
   };
 
@@ -279,7 +332,7 @@ const ImageDetailComponent = observer(() => {
         right={
           <Space>
             <Button icon={<EditOutlined />} onClick={handleEdit}>
-              编辑图片
+              图像编辑
             </Button>
             <Button icon={<PlusOutlined />} type="primary" onClick={() => navigate('/upload')}>
               上传新图片
@@ -305,7 +358,6 @@ const ImageDetailComponent = observer(() => {
               <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Button 
                   icon={<LeftOutlined />} 
-                  disabled={!prevImageId}
                   onClick={handlePrev}
                 >
                   上一张
@@ -315,7 +367,6 @@ const ImageDetailComponent = observer(() => {
                 </span>
                 <Button 
                   icon={<RightOutlined />} 
-                  disabled={!nextImageId}
                   onClick={handleNext}
                 >
                   下一张
@@ -392,7 +443,10 @@ const ImageDetailComponent = observer(() => {
             <Card title="操作">
               <Space direction="vertical" style={{ width: '100%' }} size="middle">
                 <Button icon={<EditOutlined />} block onClick={handleEdit}>
-                  编辑
+                  图像编辑
+                </Button>
+                <Button icon={<FileTextOutlined />} block onClick={handleOpenEditFilename}>
+                  修改文件名
                 </Button>
                 <Button 
                   icon={<RobotOutlined />} 
@@ -422,6 +476,26 @@ const ImageDetailComponent = observer(() => {
           </Col>
         </Row>
       </Content>
+
+      {/* 修改文件名 Modal */}
+      <Modal
+        title="修改文件名"
+        open={editFilenameVisible}
+        onOk={handleSaveFilename}
+        onCancel={() => {
+          setEditFilenameVisible(false);
+          setNewFilename('');
+        }}
+        okText="保存"
+        cancelText="取消"
+      >
+        <Input
+          value={newFilename}
+          onChange={(e) => setNewFilename(e.target.value)}
+          placeholder="请输入新文件名"
+          onPressEnter={handleSaveFilename}
+        />
+      </Modal>
     </Layout>
   );
 });

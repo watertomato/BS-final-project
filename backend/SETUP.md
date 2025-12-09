@@ -73,9 +73,67 @@ NODE_ENV=development
 # Upload
 MAX_FILE_SIZE=10485760
 UPLOAD_DIR=./uploads
+
+# AI Configuration (必需，用于 AI 分析功能)
+# 如果不配置，AI 分析功能将无法使用
+AI_API_KEY=your_api_key_here
+AI_MODEL=your_model_name_here
 ```
 
-**重要**: 请将 `你的密码` 替换为你的 MySQL root 用户密码！
+**重要**: 
+- 请将 `你的密码` 替换为你的 MySQL root 用户密码！
+- **AI 分析功能需要配置 `AI_API_KEY` 和 `AI_MODEL`，否则功能将无法使用**
+
+### AI 配置说明
+
+AI 分析功能使用 LiteLLM 库，支持多种 AI 模型。**必须配置才能使用 AI 功能**：
+
+1. **获取 API Key**：
+   - OpenAI: 从 [OpenAI Platform](https://platform.openai.com/api-keys) 获取
+   - Anthropic Claude: 从 [Anthropic Console](https://console.anthropic.com/) 获取
+   - 其他支持的模型：查看 [LiteLLM 文档](https://docs.litellm.ai/)
+
+2. **设置模型名称**（使用 `provider/model` 格式）：
+   - OpenAI 视觉模型（推荐）: `openai/gpt-4o`, `openai/gpt-4-turbo`, `openai/gpt-4-vision-preview`
+   - Anthropic Claude（推荐）: `anthropic/claude-3-opus-20240229`, `anthropic/claude-3-sonnet-20240229`, `anthropic/claude-3-5-sonnet-20241022`
+   - Google Gemini（推荐）: `google/gemini-1.5-flash`, `google/gemini-1.5-pro`, `google/gemini-pro-vision`
+   - 其他模型：查看 [LiteLLM 支持的模型列表](https://docs.litellm.ai/docs/providers)
+
+3. **在 `.env` 文件中配置**：
+   ```bash
+   AI_API_KEY=your-api-key-here
+   AI_MODEL=provider/model-name
+   AI_BASE_URL=your-base-url-here  # 可选，如果不填则使用 litellm 默认的 baseUrl
+   ```
+
+   示例：
+   ```bash
+   # OpenAI 模型（使用 openai/ 前缀）
+   AI_API_KEY=sk-your-openai-api-key
+   AI_MODEL=openai/gpt-4o
+   # AI_BASE_URL=https://api.openai.com/v1  # 可选，默认就是这个
+   
+   # Google Gemini 模型（使用 google/ 前缀）
+   AI_API_KEY=your-google-api-key
+   AI_MODEL=google/gemini-1.5-flash
+   
+   # Anthropic Claude 模型（使用 anthropic/ 前缀）
+   AI_API_KEY=sk-ant-your-anthropic-api-key
+   AI_MODEL=anthropic/claude-3-5-sonnet-20241022
+   
+   # 使用自定义代理或本地服务
+   AI_API_KEY=your-api-key
+   AI_MODEL=openai/gpt-4o
+   AI_BASE_URL=https://your-proxy-server.com/v1  # 自定义 baseUrl
+   ```
+
+**注意**: 
+- **AI 配置是必需的**，如果不配置或配置错误，AI 分析功能将无法使用，系统会返回明确的错误提示
+- **统一使用 `provider/model` 格式**，例如 `openai/gpt-4o`、`anthropic/claude-3-5-sonnet-20241022`、`google/gemini-1.5-flash`
+- 统一使用 `AI_API_KEY` 环境变量，不再区分不同的 API Key
+- `AI_BASE_URL` 是**可选的**，如果不配置则使用 litellm 默认的 baseUrl。如果需要使用代理服务器或自定义 API 端点，可以配置此选项
+- 推荐使用视觉模型（如 `openai/gpt-4o`, `anthropic/claude-3-5-sonnet-20241022`, `google/gemini-1.5-flash`），可以分析图片内容生成标签
+- 非视觉模型只能基于文本提示生成标签，效果较差
 
 ### 4. 生成 Prisma Client
 

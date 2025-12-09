@@ -43,53 +43,42 @@ import {
   RightOutlined,
   CloseOutlined,
   SettingOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import type { ImageInfo, Tag as TagType } from '../../types';
 import { formatDateTime, formatFileSize } from '../../utils';
 import { userStore } from '../../store';
-import dayjs, { Dayjs } from 'dayjs';
+import { imageApi } from '../../api';
+import { Dayjs } from 'dayjs';
 import PageHeaderBar from '../common/PageHeaderBar';
 
 const { Sider, Content } = Layout;
 const { RangePicker } = DatePicker;
 const { TabPane } = Tabs;
 
-// Mock 数据生成函数
-const generateMockImages = (): ImageInfo[] => {
-  const mockTags: TagType[] = [
-    { id: '1', name: '风景', type: 'custom' },
-    { id: '2', name: '人物', type: 'custom' },
-    { id: '3', name: '美食', type: 'custom' },
-    { id: '4', name: '旅行', type: 'custom' },
-    { id: '5', name: 'iPhone 14 Pro', type: 'exif' },
-    { id: '6', name: 'Canon EOS R5', type: 'exif' },
-    { id: '7', name: '北京', type: 'exif' },
-    { id: '8', name: '上海', type: 'exif' },
-    { id: '9', name: '海边', type: 'ai' },
-    { id: '10', name: '日落', type: 'ai' },
-  ];
-
-  const locations = ['北京', '上海', '杭州', '深圳', '广州', '成都'];
-  const devices = ['iPhone 14 Pro', 'Canon EOS R5', 'Sony A7III', 'Nikon D850'];
-
-  return Array.from({ length: 30 }, (_, i) => {
-    const randomTags = mockTags.sort(() => 0.5 - Math.random()).slice(0, Math.floor(Math.random() * 4) + 1);
-    return {
-      id: `img-${i + 1}`,
-      filename: `image-${i + 1}.jpg`,
-      url: `https://picsum.photos/400/300?random=${i + 1}`,
-      uploadTime: dayjs().subtract(Math.floor(Math.random() * 30), 'day').toISOString(),
-      size: Math.floor(Math.random() * 5000000) + 1000000,
-      tags: randomTags,
-      exif: {
-        location: locations[Math.floor(Math.random() * locations.length)],
-        device: devices[Math.floor(Math.random() * devices.length)],
-        dateTime: dayjs().subtract(Math.floor(Math.random() * 30), 'day').toISOString(),
-        width: 1920 + Math.floor(Math.random() * 1000),
-        height: 1080 + Math.floor(Math.random() * 1000),
-      },
-    };
-  });
+// 将后端数据格式转换为前端格式
+const transformImageData = (image: any): ImageInfo => {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+  
+  return {
+    id: image.id,
+    filename: image.originalFilename,
+    url: `${API_BASE_URL}/${image.storedPath}`,
+    uploadTime: image.createdAt,
+    size: image.fileSize ? parseInt(image.fileSize) : undefined,
+    tags: image.tags?.map((tag: any) => ({
+      id: tag.id,
+      name: tag.name,
+      type: tag.type,
+    })) || [],
+    exif: {
+      location: image.location || undefined,
+      device: image.deviceInfo || undefined,
+      dateTime: image.shootingTime || undefined,
+      width: image.resolution ? parseInt(image.resolution.split('x')[0]) : undefined,
+      height: image.resolution ? parseInt(image.resolution.split('x')[1]) : undefined,
+    },
+  };
 };
 
 const HomeComponent = observer(() => {
@@ -109,6 +98,11 @@ const HomeComponent = observer(() => {
   const [carouselSettingsVisible, setCarouselSettingsVisible] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(24);
+  const [loading, setLoading] = useState(false);
+  const [totalImages, setTotalImages] = useState(0);
+  const [editFilenameVisible, setEditFilenameVisible] = useState(false);
+  const [newFilename, setNewFilename] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   // 搜索和筛选状态
   const [quickSearch, setQuickSearch] = useState('');
@@ -122,10 +116,124 @@ const HomeComponent = observer(() => {
     device: '',
   });
   const [aiSearchQuery, setAiSearchQuery] = useState('');
+  const [isAiSearchActive, setIsAiSearchActive] = useState(false);
 
-  // Mock 数据
-  const [allImages] = useState<ImageInfo[]>(generateMockImages());
-  const [filteredImages, setFilteredImages] = useState<ImageInfo[]>(allImages);
+  // 真实数据
+  const [allImages, setAllImages] = useState<ImageInfo[]>([]);
+  const [filteredImages, setFilteredImages] = useState<ImageInfo[]>([]);
+
+  // 从 API 加载图片
+  const loadImages = async () => {
+    try {
+      setLoading(true);
+      
+      // 如果正在进行 AI 搜索，使用 AI 搜索接口
+      if (isAiSearchActive && aiSearchQuery.trim()) {
+        const response = await imageApi.searchByDialog({ 
+          query: aiSearchQuery, 
+          page: currentPage, 
+          limit: pageSize 
+        });
+        
+        if (response.success && response.data) {
+          const images = response.data.images || [];
+          const transformedImages = images.map(transformImageData);
+          const pagination = response.data.pagination || {
+            total: transformedImages.length,
+            page: currentPage,
+            limit: pageSize,
+            totalPages: Math.ceil(transformedImages.length / pageSize)
+          };
+          
+          console.log('loadImages - AI 搜索结果:', {
+            total: pagination.total,
+            returned: images.length,
+            transformed: transformedImages.length
+          });
+          setAllImages(transformedImages);
+          setFilteredImages(transformedImages);
+          setTotalImages(pagination.total);
+          setCurrentPage(pagination.page);
+        }
+        return;
+      }
+      
+      const params: any = {
+        page: currentPage,
+        limit: pageSize,
+      };
+
+      // 快速搜索模式
+      if (searchMode === 'quick') {
+        if (quickSearch) {
+          params.keyword = quickSearch;
+        }
+        if (selectedTags.size > 0) {
+          // 获取标签名称
+          const tagNames = Array.from(selectedTags).map(tagId => {
+            const tag = allTags.find(t => t.id === tagId);
+            return tag?.name;
+          }).filter(Boolean);
+          if (tagNames.length > 0) {
+            params.tags = tagNames;
+          }
+        }
+        if (dateRange && dateRange[0] && dateRange[1]) {
+          params.startDate = dateRange[0].startOf('day').toISOString();
+          params.endDate = dateRange[1].endOf('day').toISOString();
+        }
+      } else {
+        // 高级搜索模式
+        if (advancedSearch.filename) {
+          params.keyword = advancedSearch.filename;
+        }
+        if (advancedSearch.tags.length > 0) {
+          // 将标签 ID 转换为标签名称
+          const tagNames = advancedSearch.tags.map(tagId => {
+            const tag = allTags.find(t => t.id === tagId);
+            return tag?.name;
+          }).filter(Boolean);
+          if (tagNames.length > 0) {
+            params.tags = tagNames;
+          }
+        }
+        if (advancedSearch.dateRange && advancedSearch.dateRange[0] && advancedSearch.dateRange[1]) {
+          params.startDate = advancedSearch.dateRange[0].startOf('day').toISOString();
+          params.endDate = advancedSearch.dateRange[1].endOf('day').toISOString();
+        }
+        if (advancedSearch.location) {
+          params.location = advancedSearch.location;
+        }
+      }
+
+      const response = await imageApi.getImages(params);
+      if (response.success && response.data) {
+        const transformedImages = response.data.images.map(transformImageData);
+        setAllImages(transformedImages);
+        setFilteredImages(transformedImages);
+        setTotalImages(response.data.pagination.total);
+      }
+    } catch (error: any) {
+      console.error('加载图片失败:', error);
+      message.error('加载图片失败，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 初始加载和筛选条件变化时重新加载
+  // 注意：advancedSearch 不包含在依赖中，因为高级搜索需要点击按钮才执行
+  useEffect(() => {
+    // 如果正在进行 AI 搜索，且不是初始加载，则使用 AI 搜索接口
+    // 注意：AI 搜索的初始调用在 handleAISearch 中完成，这里只处理分页
+    if (isAiSearchActive && aiSearchQuery.trim()) {
+      loadImages();
+    } else if (!isAiSearchActive) {
+      // 普通搜索模式，正常加载（只处理快速搜索和分页）
+      loadImages();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, pageSize, quickSearch, selectedTags, dateRange, searchMode]);
 
   // 所有标签（从图片中提取）
   const allTags = useMemo(() => {
@@ -140,7 +248,6 @@ const HomeComponent = observer(() => {
     return Array.from(tagMap.values());
   }, [allImages]);
 
-
   // 标签云数据（带计数）
   const tagCloud = useMemo(() => {
     const countMap = new Map<string, number>();
@@ -154,41 +261,6 @@ const HomeComponent = observer(() => {
       count: countMap.get(tag.id) || 0,
     }));
   }, [allTags, allImages]);
-
-  // 筛选图片
-  useEffect(() => {
-    let filtered = [...allImages];
-
-    // 快速搜索（文件名、标签关键词）
-    if (quickSearch) {
-      const query = quickSearch.toLowerCase();
-      filtered = filtered.filter(
-        (img) =>
-          img.filename.toLowerCase().includes(query) ||
-          img.tags?.some((tag) => tag.name.toLowerCase().includes(query))
-      );
-    }
-
-    // 标签筛选（与关系：图片必须包含所有选中的标签）
-    if (selectedTags.size > 0) {
-      filtered = filtered.filter((img) =>
-        Array.from(selectedTags).every((tagId) =>
-          img.tags?.some((tag) => tag.id === tagId)
-        )
-      );
-    }
-
-    // 时间范围筛选
-    if (dateRange && dateRange[0] && dateRange[1]) {
-      filtered = filtered.filter((img) => {
-        const uploadTime = dayjs(img.uploadTime);
-        return uploadTime.isAfter(dateRange[0]!) && uploadTime.isBefore(dateRange[1]!.add(1, 'day'));
-      });
-    }
-
-    setFilteredImages(filtered);
-    setCurrentPage(1); // 筛选时重置到第一页
-  }, [quickSearch, selectedTags, dateRange, allImages]);
 
   // 处理标签点击
   const handleTagClick = (tagId: string) => {
@@ -210,66 +282,119 @@ const HomeComponent = observer(() => {
 
   // 高级搜索
   const handleAdvancedSearch = () => {
-    let filtered = [...allImages];
-
-    if (advancedSearch.filename) {
-      filtered = filtered.filter((img) =>
-        img.filename.toLowerCase().includes(advancedSearch.filename.toLowerCase())
-      );
-    }
-
-    // 标签筛选（与关系：图片必须包含所有选中的标签）
-    if (advancedSearch.tags.length > 0) {
-      filtered = filtered.filter((img) =>
-        advancedSearch.tags.every((tagId) =>
-          img.tags?.some((tag) => tag.id === tagId)
-        )
-      );
-    }
-
-    if (advancedSearch.dateRange && advancedSearch.dateRange[0] && advancedSearch.dateRange[1]) {
-      const [startDate, endDate] = advancedSearch.dateRange;
-      if (startDate && endDate) {
-        filtered = filtered.filter((img) => {
-          const uploadTime = dayjs(img.uploadTime);
-          return (
-            uploadTime.isAfter(startDate) &&
-            uploadTime.isBefore(endDate.add(1, 'day'))
-          );
-        });
-      }
-    }
-
-    if (advancedSearch.location) {
-      filtered = filtered.filter((img) => img.exif?.location === advancedSearch.location);
-    }
-
-    if (advancedSearch.device) {
-      filtered = filtered.filter((img) => img.exif?.device === advancedSearch.device);
-    }
-
-    setFilteredImages(filtered);
     setCurrentPage(1); // 搜索时重置到第一页
-    message.success(`找到 ${filtered.length} 张图片`);
+    loadImages();
   };
 
   // AI 搜索
-  const handleAISearch = () => {
+  const handleAISearch = async () => {
     if (!aiSearchQuery.trim()) {
       message.warning('请输入搜索内容');
       return;
     }
-    // Mock AI 搜索：简单关键词匹配
-    const query = aiSearchQuery.toLowerCase();
-    const filtered = allImages.filter(
-      (img) =>
-        img.filename.toLowerCase().includes(query) ||
-        img.tags?.some((tag) => tag.name.toLowerCase().includes(query)) ||
-        img.exif?.location?.toLowerCase().includes(query)
-    );
-    setFilteredImages(filtered);
-    setCurrentPage(1); // AI搜索时重置到第一页
-    message.success(`AI 找到 ${filtered.length} 张相关图片`);
+    try {
+      setLoading(true);
+      // 先设置 AI 搜索状态，但使用函数式更新确保立即生效
+      setIsAiSearchActive(true);
+      
+      const response = await imageApi.searchByDialog({ 
+        query: aiSearchQuery, 
+        page: 1, 
+        limit: pageSize 
+      });
+      
+      if (response.success && response.data) {
+        // 转换图片数据
+        const images = response.data.images || [];
+        const transformedImages = images.map(transformImageData);
+        
+        // 获取分页信息
+        const pagination = response.data.pagination || {
+          total: transformedImages.length,
+          page: 1,
+          limit: pageSize,
+          totalPages: Math.ceil(transformedImages.length / pageSize)
+        };
+        
+        // 获取 filters 信息
+        const filters = response.data.filters || null;
+        
+        console.log('AI 搜索结果 (handleAISearch):', {
+          total: pagination.total,
+          returned: images.length,
+          transformed: transformedImages.length,
+          firstImageTags: transformedImages[0]?.tags?.map(t => t.name) || [],
+          allImageIds: transformedImages.map(img => img.id)
+        });
+        
+        // 直接设置图片数据，不依赖 useEffect
+        setAllImages(transformedImages);
+        setFilteredImages(transformedImages);
+        setTotalImages(pagination.total);
+        setCurrentPage(pagination.page);
+        
+        // 显示 AI 解析的结果（可选）
+        const interpreted = filters?.interpreted;
+        if (interpreted) {
+          const parts = [];
+          if (interpreted.tags && interpreted.tags.length > 0) {
+            parts.push(`标签: ${interpreted.tags.join('、')}`);
+          }
+          if (interpreted.location) {
+            parts.push(`地点: ${interpreted.location}`);
+          }
+          if (interpreted.dateRange?.start || interpreted.dateRange?.end) {
+            const start = interpreted.dateRange.start ? new Date(interpreted.dateRange.start).toLocaleDateString() : '';
+            const end = interpreted.dateRange.end ? new Date(interpreted.dateRange.end).toLocaleDateString() : '';
+            parts.push(`时间: ${start}${start && end ? ' - ' : ''}${end}`);
+          }
+          if (parts.length > 0) {
+            message.success(`AI 解析结果: ${parts.join(' | ')}`);
+          }
+        }
+        
+        message.success(`找到 ${response.data.pagination.total} 张图片`);
+      } else {
+        message.error(response.message || 'AI 搜索失败');
+        setIsAiSearchActive(false);
+      }
+    } catch (error: any) {
+      console.error('AI 搜索失败:', error);
+      message.error(error?.response?.data?.message || 'AI 搜索失败，请稍后重试');
+      setIsAiSearchActive(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 重置 AI 搜索
+  const handleResetAISearch = async () => {
+    // 先重置状态
+    setAiSearchQuery('');
+    setIsAiSearchActive(false);
+    setCurrentPage(1);
+    
+    // 直接调用普通搜索接口，不依赖状态
+    try {
+      setLoading(true);
+      const params: any = {
+        page: 1,
+        limit: pageSize,
+      };
+      
+      const response = await imageApi.getImages(params);
+      if (response.success && response.data) {
+        const transformedImages = response.data.images.map(transformImageData);
+        setAllImages(transformedImages);
+        setFilteredImages(transformedImages);
+        setTotalImages(response.data.pagination.total);
+      }
+    } catch (error: any) {
+      console.error('重置搜索失败:', error);
+      message.error('重置搜索失败，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 重置高级搜索
@@ -282,8 +407,9 @@ const HomeComponent = observer(() => {
       device: '',
     });
     setAiSearchQuery('');
-    setFilteredImages(allImages);
+    setIsAiSearchActive(false);
     setCurrentPage(1); // 重置时回到第一页
+    loadImages();
   };
 
   // 选择模式切换
@@ -400,10 +526,73 @@ const HomeComponent = observer(() => {
     setPreviewVisible(true);
   };
 
+  // 删除图片
+  const handleDeleteImage = async () => {
+    if (!previewImage) return;
+
+    try {
+      setDeleting(true);
+      await imageApi.deleteImage(previewImage.id);
+      message.success('删除成功');
+      setPreviewVisible(false);
+      setPreviewImage(null);
+      // 重新加载图片列表
+      loadImages();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '删除失败');
+      console.error(error);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // 打开修改文件名对话框
+  const handleOpenEditFilename = () => {
+    if (previewImage) {
+      setNewFilename(previewImage.filename);
+      setEditFilenameVisible(true);
+    }
+  };
+
+  // 保存修改的文件名
+  const handleSaveFilename = async () => {
+    if (!previewImage || !newFilename.trim()) {
+      message.warning('请输入文件名');
+      return;
+    }
+
+    try {
+      const response = await imageApi.updateImage(previewImage.id, {
+        originalFilename: newFilename.trim(),
+      });
+      if (response.success && response.data) {
+        message.success('文件名修改成功');
+        setEditFilenameVisible(false);
+        // 更新预览图片信息
+        setPreviewImage({
+          ...previewImage,
+          filename: newFilename.trim(),
+        });
+        // 重新加载图片列表
+        loadImages();
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '修改文件名失败');
+      console.error(error);
+    }
+  };
+
+  // 退出登录
+  const handleLogout = () => {
+    userStore.logout();
+    message.success('已退出登录');
+    navigate('/login', { replace: true });
+  };
+
   // 用户菜单
   const userMenu = (
     <Menu>
-      <Menu.Item key="logout" icon={<LogoutOutlined />} onClick={() => message.info('退出登录（Mock）')}>
+      <Menu.Item key="logout" icon={<LogoutOutlined />} onClick={handleLogout}>
         退出登录
       </Menu.Item>
     </Menu>
@@ -426,12 +615,8 @@ const HomeComponent = observer(() => {
     return Array.from(devices);
   }, [allImages]);
 
-  // 分页后的图片列表
-  const paginatedImages = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    const end = start + pageSize;
-    return filteredImages.slice(start, end);
-  }, [filteredImages, currentPage, pageSize]);
+  // 分页后的图片列表（现在由后端处理分页，直接使用 filteredImages）
+  const paginatedImages = filteredImages;
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -496,7 +681,11 @@ const HomeComponent = observer(() => {
         >
           <Tabs
             activeKey={searchMode}
-            onChange={(key) => setSearchMode(key as 'quick' | 'advanced')}
+            onChange={(key) => {
+              setSearchMode(key as 'quick' | 'advanced');
+              setIsAiSearchActive(false);
+              setAiSearchQuery('');
+            }}
             style={{ padding: '16px' }}
           >
             <TabPane tab="快速筛选" key="quick">
@@ -642,8 +831,8 @@ const HomeComponent = observer(() => {
                     <Button type="primary" onClick={handleAISearch} block>
                       AI 搜索
                     </Button>
-                    <Button onClick={() => setAiSearchQuery('')} block>
-                      清空
+                    <Button onClick={handleResetAISearch} block>
+                      重置
                     </Button>
                   </Space>
                 </TabPane>
@@ -656,7 +845,7 @@ const HomeComponent = observer(() => {
           <Card
             title={
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>我的图片 ({filteredImages.length})</span>
+                <span>我的图片 ({totalImages})</span>
                 <Space>
                   {selectionMode && (
                     <>
@@ -701,7 +890,11 @@ const HomeComponent = observer(() => {
               </div>
             }
           >
-            {filteredImages.length === 0 ? (
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '50px' }}>
+                <div>加载中...</div>
+              </div>
+            ) : filteredImages.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '50px' }}>
                 <div>暂无图片</div>
               </div>
@@ -725,18 +918,26 @@ const HomeComponent = observer(() => {
                             position: 'relative',
                             height: 200,
                             overflow: 'hidden',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: '#fafafa',
                           }}
                         >
-                          <Image
+                          <img
                             src={image.url}
                             alt={image.filename}
-                            height={200}
                             style={{ 
-                              objectFit: 'cover', 
-                              width: '100%',
+                              objectFit: 'contain', 
+                              maxWidth: '100%',
+                              maxHeight: '100%',
+                              width: 'auto',
+                              height: 'auto',
                               transition: 'all 0.3s ease',
+                              display: 'block',
+                              margin: 'auto',
+                              verticalAlign: 'middle',
                             }}
-                            preview={false}
                           />
                           {/* 选中状态的遮罩层 */}
                           {selectionMode && selectedImages.has(image.id) && (
@@ -864,7 +1065,7 @@ const HomeComponent = observer(() => {
                 <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center' }}>
                   <Pagination
                     current={currentPage}
-                    total={filteredImages.length}
+                    total={totalImages}
                     pageSize={pageSize}
                     showSizeChanger
                     showQuickJumper
@@ -892,6 +1093,26 @@ const HomeComponent = observer(() => {
         footer={[
           <Button key="close" onClick={() => setPreviewVisible(false)}>
             关闭
+          </Button>,
+          <Popconfirm
+            key="delete"
+            title="确认删除"
+            description="确定要删除这张图片吗？此操作不可恢复。"
+            onConfirm={handleDeleteImage}
+            okText="删除"
+            okType="danger"
+            cancelText="取消"
+          >
+            <Button danger icon={<DeleteOutlined />} loading={deleting}>
+              删除
+            </Button>
+          </Popconfirm>,
+          <Button
+            key="edit"
+            icon={<EditOutlined />}
+            onClick={handleOpenEditFilename}
+          >
+            修改文件名
           </Button>,
           <Button
             key="detail"
@@ -988,6 +1209,26 @@ const HomeComponent = observer(() => {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* 修改文件名 Modal */}
+      <Modal
+        title="修改文件名"
+        open={editFilenameVisible}
+        onOk={handleSaveFilename}
+        onCancel={() => {
+          setEditFilenameVisible(false);
+          setNewFilename('');
+        }}
+        okText="保存"
+        cancelText="取消"
+      >
+        <Input
+          value={newFilename}
+          onChange={(e) => setNewFilename(e.target.value)}
+          placeholder="请输入新文件名"
+          onPressEnter={handleSaveFilename}
+        />
       </Modal>
 
       {/* 全屏轮播 Drawer */}

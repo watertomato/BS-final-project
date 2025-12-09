@@ -5,6 +5,7 @@ import { extractExif } from '../services/exifService.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,11 +26,14 @@ export const uploadImage = async (req, res, next) => {
     // 提取 EXIF 信息
     const exifData = await extractExif(file.path);
 
+    // 文件名编码已在中间件中处理
+    const originalFilename = file.originalname;
+
     // 保存图片信息到数据库
     const image = await prisma.image.create({
       data: {
         userId,
-        originalFilename: file.originalname,
+        originalFilename: originalFilename,
         storedPath: `uploads/originals/${file.filename}`,
         thumbnailPath: `uploads/thumbnails/${thumbnailPath}`,
         fileSize: BigInt(file.size),
@@ -79,13 +83,31 @@ export const uploadImage = async (req, res, next) => {
       }
     });
 
+    // 格式化返回数据，处理 BigInt
+    const formattedImage = {
+      id: imageWithTags.id.toString(),
+      userId: imageWithTags.userId.toString(),
+      originalFilename: imageWithTags.originalFilename,
+      storedPath: imageWithTags.storedPath,
+      thumbnailPath: imageWithTags.thumbnailPath,
+      fileSize: imageWithTags.fileSize ? imageWithTags.fileSize.toString() : null,
+      resolution: imageWithTags.resolution,
+      shootingTime: imageWithTags.shootingTime,
+      location: imageWithTags.location,
+      deviceInfo: imageWithTags.deviceInfo,
+      createdAt: imageWithTags.createdAt,
+      tags: imageWithTags.imageTags.map(it => ({
+        id: it.tag.id.toString(),
+        name: it.tag.name,
+        type: it.tag.type === 1 ? 'custom' : it.tag.type === 2 ? 'exif' : 'ai',
+        createdAt: it.tag.createdAt,
+      })),
+    };
+
     res.status(201).json({
       success: true,
       message: '图片上传成功',
-      data: {
-        ...imageWithTags,
-        tags: imageWithTags.imageTags.map(it => it.tag)
-      }
+      data: formattedImage
     });
   } catch (error) {
     // 如果出错，删除已上传的文件
@@ -155,20 +177,31 @@ export const getImages = async (req, res, next) => {
       });
     }
 
-    // 标签过滤
+    // 标签过滤（AND 逻辑：图片必须同时包含所有指定的标签）
     if (tags) {
       const tagArray = Array.isArray(tags) ? tags : [tags];
-      where.AND.push({
-        imageTags: {
-          some: {
-            tag: {
-              name: {
-                in: tagArray
+      if (tagArray.length > 0) {
+        // 为每个标签创建一个条件，使用 AND 连接
+        const tagConditions = tagArray.map(tagName => ({
+          imageTags: {
+            some: {
+              tag: {
+                name: tagName
               }
             }
           }
+        }));
+        
+        // 如果只有一个标签，直接添加；如果有多个标签，需要确保图片同时包含所有标签
+        if (tagConditions.length === 1) {
+          where.AND.push(tagConditions[0]);
+        } else {
+          // 多个标签：图片必须同时包含所有标签
+          where.AND.push({
+            AND: tagConditions
+          });
         }
-      });
+      }
     }
 
     // 如果没有任何条件，删除 AND
@@ -196,11 +229,25 @@ export const getImages = async (req, res, next) => {
       }
     });
 
-    // 格式化返回数据
+    // 格式化返回数据，处理 BigInt
     const formattedImages = images.map(image => ({
-      ...image,
-      tags: image.imageTags.map(it => it.tag),
-      imageTags: undefined
+      id: image.id.toString(),
+      userId: image.userId.toString(),
+      originalFilename: image.originalFilename,
+      storedPath: image.storedPath,
+      thumbnailPath: image.thumbnailPath,
+      fileSize: image.fileSize ? image.fileSize.toString() : null,
+      resolution: image.resolution,
+      shootingTime: image.shootingTime,
+      location: image.location,
+      deviceInfo: image.deviceInfo,
+      createdAt: image.createdAt,
+      tags: image.imageTags.map(it => ({
+        id: it.tag.id.toString(),
+        name: it.tag.name,
+        type: it.tag.type === 1 ? 'custom' : it.tag.type === 2 ? 'exif' : 'ai',
+        createdAt: it.tag.createdAt,
+      })),
     }));
 
     res.json({
@@ -244,13 +291,30 @@ export const getImageById = async (req, res, next) => {
       throw new AppError('图片不存在', 404);
     }
 
+    // 格式化返回数据，处理 BigInt
+    const formattedImage = {
+      id: image.id.toString(),
+      userId: image.userId.toString(),
+      originalFilename: image.originalFilename,
+      storedPath: image.storedPath,
+      thumbnailPath: image.thumbnailPath,
+      fileSize: image.fileSize ? image.fileSize.toString() : null,
+      resolution: image.resolution,
+      shootingTime: image.shootingTime,
+      location: image.location,
+      deviceInfo: image.deviceInfo,
+      createdAt: image.createdAt,
+      tags: image.imageTags.map(it => ({
+        id: it.tag.id.toString(),
+        name: it.tag.name,
+        type: it.tag.type === 1 ? 'custom' : it.tag.type === 2 ? 'exif' : 'ai',
+        createdAt: it.tag.createdAt,
+      })),
+    };
+
     res.json({
       success: true,
-      data: {
-        ...image,
-        tags: image.imageTags.map(it => it.tag),
-        imageTags: undefined
-      }
+      data: formattedImage
     });
   } catch (error) {
     next(error);
@@ -291,16 +355,135 @@ export const updateImage = async (req, res, next) => {
       }
     });
 
+    // 格式化返回数据，处理 BigInt
+    const formattedImage = {
+      id: updatedImage.id.toString(),
+      userId: updatedImage.userId.toString(),
+      originalFilename: updatedImage.originalFilename,
+      storedPath: updatedImage.storedPath,
+      thumbnailPath: updatedImage.thumbnailPath,
+      fileSize: updatedImage.fileSize ? updatedImage.fileSize.toString() : null,
+      resolution: updatedImage.resolution,
+      shootingTime: updatedImage.shootingTime,
+      location: updatedImage.location,
+      deviceInfo: updatedImage.deviceInfo,
+      createdAt: updatedImage.createdAt,
+      tags: updatedImage.imageTags.map(it => ({
+        id: it.tag.id.toString(),
+        name: it.tag.name,
+        type: it.tag.type === 1 ? 'custom' : it.tag.type === 2 ? 'exif' : 'ai',
+        createdAt: it.tag.createdAt,
+      })),
+    };
+
     res.json({
       success: true,
       message: '图片信息更新成功',
-      data: {
-        ...updatedImage,
-        tags: updatedImage.imageTags.map(it => it.tag),
-        imageTags: undefined
-      }
+      data: formattedImage
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+// 替换图片文件（用于编辑后保存）
+export const replaceImageFile = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      throw new AppError('请选择要上传的图片', 400);
+    }
+
+    const userId = BigInt(req.user.userId);
+    const imageId = BigInt(req.params.id);
+    const file = req.file;
+
+    // 验证图片是否属于当前用户
+    const image = await prisma.image.findFirst({
+      where: {
+        id: imageId,
+        userId
+      }
+    });
+
+    if (!image) {
+      // 删除上传的文件
+      try {
+        await fs.unlink(file.path);
+      } catch (err) {
+        console.error('删除文件失败:', err);
+      }
+      throw new AppError('图片不存在', 404);
+    }
+
+    // 删除旧文件
+    const oldOriginalPath = path.join(__dirname, '../..', image.storedPath);
+    const oldThumbnailPath = path.join(__dirname, '../..', image.thumbnailPath);
+    try {
+      await fs.unlink(oldOriginalPath);
+      await fs.unlink(oldThumbnailPath);
+    } catch (err) {
+      console.error('删除旧文件失败:', err);
+    }
+
+    // 生成新的缩略图
+    const thumbnailPath = await processImage(file.path, file.filename);
+
+    // 文件名编码已在中间件中处理
+    const originalFilename = file.originalname;
+
+    // 更新数据库
+    const updatedImage = await prisma.image.update({
+      where: { id: imageId },
+      data: {
+        originalFilename: originalFilename,
+        storedPath: `uploads/originals/${file.filename}`,
+        thumbnailPath: `uploads/thumbnails/${thumbnailPath}`,
+        fileSize: BigInt(file.size),
+      },
+      include: {
+        imageTags: {
+          include: {
+            tag: true
+          }
+        }
+      }
+    });
+
+    // 格式化返回数据，处理 BigInt
+    const formattedImage = {
+      id: updatedImage.id.toString(),
+      userId: updatedImage.userId.toString(),
+      originalFilename: updatedImage.originalFilename,
+      storedPath: updatedImage.storedPath,
+      thumbnailPath: updatedImage.thumbnailPath,
+      fileSize: updatedImage.fileSize ? updatedImage.fileSize.toString() : null,
+      resolution: updatedImage.resolution,
+      shootingTime: updatedImage.shootingTime,
+      location: updatedImage.location,
+      deviceInfo: updatedImage.deviceInfo,
+      createdAt: updatedImage.createdAt,
+      tags: updatedImage.imageTags.map(it => ({
+        id: it.tag.id.toString(),
+        name: it.tag.name,
+        type: it.tag.type === 1 ? 'custom' : it.tag.type === 2 ? 'exif' : 'ai',
+        createdAt: it.tag.createdAt,
+      })),
+    };
+
+    res.json({
+      success: true,
+      message: '图片替换成功',
+      data: formattedImage
+    });
+  } catch (error) {
+    // 如果出错，删除已上传的文件
+    if (req.file) {
+      try {
+        await fs.unlink(req.file.path);
+      } catch (err) {
+        console.error('删除文件失败:', err);
+      }
+    }
     next(error);
   }
 };
@@ -415,14 +598,31 @@ export const addImageTags = async (req, res, next) => {
       }
     });
 
+    // 格式化返回数据，处理 BigInt
+    const formattedImage = {
+      id: updatedImage.id.toString(),
+      userId: updatedImage.userId.toString(),
+      originalFilename: updatedImage.originalFilename,
+      storedPath: updatedImage.storedPath,
+      thumbnailPath: updatedImage.thumbnailPath,
+      fileSize: updatedImage.fileSize ? updatedImage.fileSize.toString() : null,
+      resolution: updatedImage.resolution,
+      shootingTime: updatedImage.shootingTime,
+      location: updatedImage.location,
+      deviceInfo: updatedImage.deviceInfo,
+      createdAt: updatedImage.createdAt,
+      tags: updatedImage.imageTags.map(it => ({
+        id: it.tag.id.toString(),
+        name: it.tag.name,
+        type: it.tag.type === 1 ? 'custom' : it.tag.type === 2 ? 'exif' : 'ai',
+        createdAt: it.tag.createdAt,
+      })),
+    };
+
     res.json({
       success: true,
       message: '标签添加成功',
-      data: {
-        ...updatedImage,
-        tags: updatedImage.imageTags.map(it => it.tag),
-        imageTags: undefined
-      }
+      data: formattedImage
     });
   } catch (error) {
     next(error);
@@ -460,6 +660,45 @@ export const removeImageTag = async (req, res, next) => {
       success: true,
       message: '标签移除成功'
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 下载图片
+export const downloadImage = async (req, res, next) => {
+  try {
+    const userId = BigInt(req.user.userId);
+    const imageId = BigInt(req.params.id);
+
+    // 验证图片是否属于当前用户
+    const image = await prisma.image.findFirst({
+      where: {
+        id: imageId,
+        userId
+      }
+    });
+
+    if (!image) {
+      throw new AppError('图片不存在', 404);
+    }
+
+    // 构建文件绝对路径
+    const filePath = path.resolve(__dirname, '../..', image.storedPath);
+
+    // 检查文件是否存在
+    if (!existsSync(filePath)) {
+      throw new AppError('文件不存在', 404);
+    }
+
+    // 设置响应头，强制下载
+    // 使用 RFC 5987 编码处理中文文件名
+    const filename = encodeURIComponent(image.originalFilename);
+    res.setHeader('Content-Disposition', `attachment; filename="${image.originalFilename}"; filename*=UTF-8''${filename}`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+
+    // 发送文件
+    res.sendFile(filePath);
   } catch (error) {
     next(error);
   }

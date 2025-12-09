@@ -4,9 +4,11 @@ import {
   getImages,
   getImageById,
   updateImage,
+  replaceImageFile,
   deleteImage,
   addImageTags,
   removeImageTag,
+  downloadImage,
 } from '../controllers/imageController.js';
 import {
   generateAiTagsForImage,
@@ -14,6 +16,7 @@ import {
 } from '../controllers/aiController.js';
 import { authenticateToken } from '../middlewares/auth.js';
 import { upload } from '../middlewares/upload.js';
+import { fixFilenameEncoding } from '../middlewares/filenameEncoding.js';
 
 const router = express.Router();
 
@@ -21,7 +24,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // 上传图片
-router.post('/upload', upload.single('image'), uploadImage);
+router.post('/upload', upload.single('image'), fixFilenameEncoding, uploadImage);
 
 // 获取图片列表（支持查询）
 router.get('/', getImages);
@@ -29,11 +32,17 @@ router.get('/', getImages);
 // 对话式检索图片（AI 解析意图）
 router.post('/search/dialog', searchByDialog);
 
+// 下载图片（必须在 /:id 之前，否则会被 /:id 匹配）
+router.get('/:id/download', downloadImage);
+
 // 获取单张图片详情
 router.get('/:id', getImageById);
 
 // 更新图片信息
 router.put('/:id', updateImage);
+
+// 替换图片文件（用于编辑后保存）
+router.post('/:id/replace', upload.single('image'), fixFilenameEncoding, replaceImageFile);
 
 // 删除图片
 router.delete('/:id', deleteImage);
