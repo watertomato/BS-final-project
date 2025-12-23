@@ -183,13 +183,13 @@ export const getImages = async (req, res, next) => {
       if (tagArray.length > 0) {
         // 为每个标签创建一个条件，使用 AND 连接
         const tagConditions = tagArray.map(tagName => ({
-          imageTags: {
-            some: {
-              tag: {
+        imageTags: {
+          some: {
+            tag: {
                 name: tagName
-              }
             }
           }
+        }
         }));
         
         // 如果只有一个标签，直接添加；如果有多个标签，需要确保图片同时包含所有标签

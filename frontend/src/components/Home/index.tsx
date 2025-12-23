@@ -60,7 +60,7 @@ const { TabPane } = Tabs;
 const transformImageData = (image: any): ImageInfo => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
   
-  return {
+    return {
     id: image.id,
     filename: image.originalFilename,
     url: `${API_BASE_URL}/${image.storedPath}`,
@@ -71,14 +71,14 @@ const transformImageData = (image: any): ImageInfo => {
       name: tag.name,
       type: tag.type,
     })) || [],
-    exif: {
+      exif: {
       location: image.location || undefined,
       device: image.deviceInfo || undefined,
       dateTime: image.shootingTime || undefined,
       width: image.resolution ? parseInt(image.resolution.split('x')[0]) : undefined,
       height: image.resolution ? parseInt(image.resolution.split('x')[1]) : undefined,
-    },
-  };
+      },
+    };
 };
 
 const HomeComponent = observer(() => {
@@ -342,7 +342,7 @@ const HomeComponent = observer(() => {
           }
           if (interpreted.location) {
             parts.push(`地点: ${interpreted.location}`);
-          }
+    }
           if (interpreted.dateRange?.start || interpreted.dateRange?.end) {
             const start = interpreted.dateRange.start ? new Date(interpreted.dateRange.start).toLocaleDateString() : '';
             const end = interpreted.dateRange.end ? new Date(interpreted.dateRange.end).toLocaleDateString() : '';

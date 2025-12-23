@@ -234,9 +234,9 @@ export const searchByDialog = async (req, res, next) => {
         // 使用 AND 逻辑：图片必须同时包含所有指定的标签
         // 为每个标签创建一个条件，使用 AND 连接
         const tagConditions = existingTagNames.map(tagName => ({
-          imageTags: {
-            some: {
-              tag: {
+        imageTags: {
+          some: {
+            tag: {
                 name: tagName
               }
             }
@@ -255,7 +255,7 @@ export const searchByDialog = async (req, res, next) => {
         console.log('使用标签条件进行查询（AND 逻辑：必须同时包含所有标签）');
       } else {
         console.log('警告：所有标签在数据库中都不存在，无法进行标签筛选');
-      }
+        }
     }
 
     // 转换 BigInt 为字符串以便序列化
@@ -264,7 +264,7 @@ export const searchByDialog = async (req, res, next) => {
       AND: where.AND
     };
     console.log('构建的查询条件:', JSON.stringify(whereForLog, null, 2));
-    
+
     if (where.AND.length === 0) {
       console.log('警告：没有有效的搜索条件，将返回所有图片');
       delete where.AND;
@@ -282,7 +282,7 @@ export const searchByDialog = async (req, res, next) => {
       userId: where.userId.toString(),
       AND: where.AND
     }, null, 2));
-    
+
     const [total, images] = await Promise.all([
       prisma.image.count({ where }),
       prisma.image.findMany({
@@ -324,12 +324,12 @@ export const searchByDialog = async (req, res, next) => {
       success: true,
       data: {
         images: images.map(mapImageWithTags),
-        filters: filtersForResponse,
-        pagination: {
-          page: pageNumber,
-          limit: take,
-          total,
-          totalPages: Math.ceil(total / take)
+      filters: filtersForResponse,
+      pagination: {
+        page: pageNumber,
+        limit: take,
+        total,
+        totalPages: Math.ceil(total / take)
         }
       }
     });

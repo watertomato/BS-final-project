@@ -111,7 +111,7 @@ export const generateAiTags = async (imagePath, options = {}) => {
     
     if (tags && tags.length > 0) {
       return tags;
-    }
+  }
     throw new Error('AI 未能生成有效标签');
   } catch (error) {
     console.error('AI 标签生成失败:', error);
@@ -189,7 +189,7 @@ const buildSearchPrompt = (query, availableTags = [], availableLocations = []) =
     prompt += `- 根据查询内容，提取相关的地点信息\n`;
     prompt += `- 如果没有相关地点，可以留空 ""\n\n`;
   }
-  
+
   prompt += `**日期范围规则：**\n`;
   prompt += `- 如果查询中包含时间信息（如"去年"、"2023年"、"上个月"等），转换为日期范围\n`;
   prompt += `- 日期格式：ISO 8601 格式（如 "2023-01-01T00:00:00.000Z"）\n`;
@@ -250,12 +250,12 @@ export const interpretSearchQuery = async (query, options = {}) => {
     
     const structured = parseStructuredFilters(text);
     
-    if (structured) {
+      if (structured) {
       console.log('解析后的结构化数据:');
       console.log(JSON.stringify(structured, null, 2));
       console.log('=== AI 搜索调试信息结束 ===\n');
-      return structured;
-    }
+        return structured;
+      }
     
     console.error('解析失败：未能从 LLM 返回内容中提取结构化数据');
     console.log('=== AI 搜索调试信息结束 ===\n');
