@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
-import { Form, Input, Button, message } from 'antd';
+import { Form, Input, Button, App } from 'antd';
 import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from './AuthLayout';
 import { authApi } from '../../api';
@@ -15,6 +15,7 @@ type RegisterFormValues = {
 const Register = observer(() => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const { message } = App.useApp();
 
   // 如果已登录，重定向到首页
   useEffect(() => {
@@ -34,6 +35,7 @@ const Register = observer(() => {
       message.success(response.message || '注册成功，请登录');
       navigate('/login');
     } catch (error: any) {
+      console.error('注册错误:', error);
       const errorMessage =
         error?.response?.data?.message || error?.message || '注册失败，请稍后重试';
       message.error(errorMessage);
@@ -61,7 +63,7 @@ const Register = observer(() => {
             { min: 6, message: '用户名至少 6 个字符' },
           ]}
         >
-          <Input placeholder="输入用户名" allowClear />
+          <Input placeholder="输入用户名" allowClear autoComplete="username" />
         </Form.Item>
 
         <Form.Item
@@ -72,7 +74,7 @@ const Register = observer(() => {
             { type: 'email', message: '邮箱格式不正确' },
           ]}
         >
-          <Input placeholder="name@example.com" allowClear />
+          <Input placeholder="name@example.com" allowClear autoComplete="email" />
         </Form.Item>
 
         <Form.Item
@@ -83,7 +85,7 @@ const Register = observer(() => {
             { min: 6, message: '密码至少 6 个字符' },
           ]}
         >
-          <Input.Password placeholder="输入密码" allowClear />
+          <Input.Password placeholder="输入密码" allowClear autoComplete="new-password" />
         </Form.Item>
 
         <Form.Item>

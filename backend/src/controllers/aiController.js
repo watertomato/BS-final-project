@@ -234,9 +234,9 @@ export const searchByDialog = async (req, res, next) => {
         // 使用 AND 逻辑：图片必须同时包含所有指定的标签
         // 为每个标签创建一个条件，使用 AND 连接
         const tagConditions = existingTagNames.map(tagName => ({
-        imageTags: {
-          some: {
-            tag: {
+          imageTags: {
+            some: {
+              tag: {
                 name: tagName
               }
             }

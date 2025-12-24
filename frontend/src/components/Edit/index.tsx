@@ -15,6 +15,7 @@ import {
   Spin,
   Modal,
   message,
+  Grid,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -79,12 +80,15 @@ const PANEL_BODY_STYLE = {
   color: '#fff',
 };
 
-const sliderTitleStyle = { color: '#f5f5f5', marginBottom: 8 };
+const sliderTitleStyle = { color: '#f5f5f5', marginBottom: 4 };
 
 const ImageEditor = observer(() => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const cropperRef = useRef<ReactCropperElement>(null);
+  const { useBreakpoint } = Grid;
+  const screens = useBreakpoint();
+  const isMobile = !screens?.md;
 
   const [image, setImage] = useState<ImageInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -254,21 +258,34 @@ const ImageEditor = observer(() => {
         style={{ background: '#050607' }}
         left={
           <Space size={12} align="center">
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(id ? `/image/${id}` : '/home')}>
-              返回
-            </Button>
-            <span style={{ fontSize: 18, fontWeight: 600, color: '#fff' }}>图片编辑</span>
+            {isMobile ? (
+              <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(id ? `/image/${id}` : '/home')} aria-label="返回" />
+            ) : (
+              <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(id ? `/image/${id}` : '/home')}>
+                返回
+              </Button>
+            )}
+            <span style={{ fontSize: isMobile ? 14 : 16, fontWeight: 600, color: '#fff' }}>图片编辑</span>
           </Space>
         }
         center={<span style={{ color: 'rgba(255,255,255,0.75)' }}>{image.filename}</span>}
         right={
           <Space>
-            <Button icon={<CloseOutlined />} onClick={handleCancel}>
-              取消
-            </Button>
-            <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
-              保存
-            </Button>
+            {isMobile ? (
+              <>
+                <Button icon={<CloseOutlined />} onClick={handleCancel} aria-label="取消" />
+                <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving} aria-label="保存" />
+              </>
+            ) : (
+              <>
+                <Button icon={<CloseOutlined />} onClick={handleCancel}>
+                  取消
+                </Button>
+                <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
+                  保存
+                </Button>
+              </>
+            )}
           </Space>
         }
       />
@@ -278,6 +295,7 @@ const ImageEditor = observer(() => {
           padding: 24,
           background: 'linear-gradient(180deg, #0b0d10 0%, #050607 100%)',
           display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
           gap: 24,
           overflow: 'hidden',
         }}
@@ -285,13 +303,13 @@ const ImageEditor = observer(() => {
         <Card
           style={{
             flex: 1,
-            height: '100%',
+            height: isMobile ? 'auto' : '100%',
             background: '#0f1115',
             border: '1px solid #1f232d',
             display: 'flex',
             flexDirection: 'column',
           }}
-          bodyStyle={{ padding: 0, flex: 1, display: 'flex' }}
+          styles={{ body: { padding: 0, flex: 1, display: 'flex' } }}
         >
           <div style={{ flex: 1, padding: 24 }}>
             <div
@@ -320,20 +338,23 @@ const ImageEditor = observer(() => {
 
         <div
           style={{
-            width: 340,
+            width: isMobile ? '100%' : 340,
             display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-            height: '100%',
+            flexDirection: isMobile ? 'row' : 'column',
+            gap: 12,
+            height: isMobile ? '30vh' : '100%',
+            overflowX: isMobile ? 'auto' : undefined,
+            paddingBottom: isMobile ? 8 : undefined,
+            WebkitOverflowScrolling: isMobile ? 'touch' : undefined,
           }}
         >
           <Card
             title="裁剪"
-            style={PANEL_CARD_STYLE}
+            style={{ ...PANEL_CARD_STYLE, minWidth: isMobile ? 220 : undefined, maxHeight: isMobile ? '30vh' : undefined, overflowY: isMobile ? 'auto' : undefined }}
             headStyle={PANEL_HEAD_STYLE}
-            bodyStyle={PANEL_BODY_STYLE}
+            styles={{ body: PANEL_BODY_STYLE }}
             extra={
-              <Button type="link" icon={<ReloadOutlined />} onClick={() => cropperRef.current?.cropper?.reset()} />
+              <Button type="link" size={isMobile ? 'small' : undefined} icon={<ReloadOutlined />} onClick={() => cropperRef.current?.cropper?.reset()} />
             }
           >
             <Radio.Group
@@ -351,18 +372,18 @@ const ImageEditor = observer(() => {
             </Radio.Group>
           </Card>
 
-          <Card title="旋转 / 翻转" style={PANEL_CARD_STYLE} headStyle={PANEL_HEAD_STYLE} bodyStyle={PANEL_BODY_STYLE}>
+          <Card title="旋转 / 翻转" style={{ ...PANEL_CARD_STYLE, minWidth: isMobile ? 220 : undefined, maxHeight: isMobile ? '30vh' : undefined, overflowY: isMobile ? 'auto' : undefined }} headStyle={PANEL_HEAD_STYLE} styles={{ body: PANEL_BODY_STYLE }}>
             <Space wrap style={{ width: '100%' }}>
-              <Button icon={<RotateLeftOutlined />} onClick={() => handleRotate(-90)}>
+              <Button size={isMobile ? 'small' : undefined} icon={<RotateLeftOutlined />} onClick={() => handleRotate(-90)}>
                 向左 90°
               </Button>
-              <Button icon={<RotateRightOutlined />} onClick={() => handleRotate(90)}>
+              <Button size={isMobile ? 'small' : undefined} icon={<RotateRightOutlined />} onClick={() => handleRotate(90)}>
                 向右 90°
               </Button>
-              <Button icon={<RetweetOutlined />} onClick={() => handleFlip('x')}>
+              <Button size={isMobile ? 'small' : undefined} icon={<RetweetOutlined />} onClick={() => handleFlip('x')}>
                 水平翻转
               </Button>
-              <Button icon={<RetweetOutlined />} onClick={() => handleFlip('y')}>
+              <Button size={isMobile ? 'small' : undefined} icon={<RetweetOutlined />} onClick={() => handleFlip('y')}>
                 垂直翻转
               </Button>
             </Space>
@@ -370,11 +391,11 @@ const ImageEditor = observer(() => {
 
           <Card
             title="色调调整"
-            style={PANEL_CARD_STYLE}
+            style={{ ...PANEL_CARD_STYLE, minWidth: isMobile ? 220 : undefined, maxHeight: isMobile ? '30vh' : undefined, overflowY: isMobile ? 'auto' : undefined }}
             headStyle={PANEL_HEAD_STYLE}
-            bodyStyle={PANEL_BODY_STYLE}
+            styles={{ body: PANEL_BODY_STYLE }}
             extra={
-              <Button type="link" size="small" onClick={() => {
+              <Button type="link" size={isMobile ? 'small' : undefined} onClick={() => {
                 setBrightness(100);
                 setContrast(100);
                 setSaturation(100);
@@ -383,34 +404,34 @@ const ImageEditor = observer(() => {
               </Button>
             }
           >
-            <div style={{ marginBottom: 16 }}>
-              <Title level={5} style={sliderTitleStyle}>
+            <div style={{ marginBottom: 4 }}>
+              <Title level={5} style={{ ...sliderTitleStyle, fontSize: isMobile ? 12 : undefined, marginBottom: 4 }}>
                 亮度
               </Title>
-              <Slider min={0} max={200} value={brightness} onChange={setBrightness} />
+              <Slider style={{ margin: 0 }} min={0} max={200} value={brightness} onChange={setBrightness} />
             </div>
-            <Divider />
-            <div style={{ marginBottom: 16 }}>
-              <Title level={5} style={sliderTitleStyle}>
+            <Divider style={{ margin: '6px 0' }} />
+            <div style={{ marginBottom: 4 }}>
+              <Title level={5} style={{ ...sliderTitleStyle, fontSize: isMobile ? 12 : undefined, marginBottom: 4 }}>
                 对比度
               </Title>
-              <Slider min={0} max={200} value={contrast} onChange={setContrast} />
+              <Slider style={{ margin: 0 }} min={0} max={200} value={contrast} onChange={setContrast} />
             </div>
-            <Divider />
+            <Divider style={{ margin: '6px 0' }} />
             <div>
-              <Title level={5} style={sliderTitleStyle}>
+              <Title level={5} style={{ ...sliderTitleStyle, fontSize: isMobile ? 12 : undefined, marginBottom: 4 }}>
                 饱和度
               </Title>
-              <Slider min={0} max={200} value={saturation} onChange={setSaturation} />
+              <Slider style={{ margin: 0 }} min={0} max={200} value={saturation} onChange={setSaturation} />
             </div>
           </Card>
 
-          <Card style={PANEL_CARD_STYLE} bodyStyle={PANEL_BODY_STYLE}>
+          <Card style={{ ...PANEL_CARD_STYLE, minWidth: isMobile ? 220 : undefined }} styles={{ body: PANEL_BODY_STYLE }}>
             <Space direction="vertical" style={{ width: '100%' }}>
-              <Button block onClick={handleReset} icon={<ReloadOutlined />}>
+              <Button size={isMobile ? 'small' : undefined} block onClick={handleReset} icon={<ReloadOutlined />}>
                 重置所有
               </Button>
-              <Text style={{ color: 'rgba(255,255,255,0.65)' }}>保存后将覆盖原图（Mock 状态，仅前端预览）。</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: isMobile ? 12 : undefined }}>保存后将覆盖原图（Mock 状态，仅前端预览）。</Text>
             </Space>
           </Card>
         </div>

@@ -111,7 +111,7 @@ export const generateAiTags = async (imagePath, options = {}) => {
     
     if (tags && tags.length > 0) {
       return tags;
-  }
+    }
     throw new Error('AI 未能生成有效标签');
   } catch (error) {
     console.error('AI 标签生成失败:', error);

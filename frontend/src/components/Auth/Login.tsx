@@ -76,7 +76,7 @@ const Login = observer(() => {
             { min: 6, message: '用户名至少 6 个字符' },
           ]}
         >
-          <Input placeholder="输入用户名" allowClear />
+          <Input placeholder="输入用户名" allowClear autoComplete="username" />
         </Form.Item>
 
         <Form.Item
@@ -87,7 +87,7 @@ const Login = observer(() => {
             { min: 6, message: '密码至少 6 个字符' },
           ]}
         >
-          <Input.Password placeholder="输入密码" allowClear />
+          <Input.Password placeholder="输入密码" allowClear autoComplete="current-password" />
         </Form.Item>
 
         <Form.Item>

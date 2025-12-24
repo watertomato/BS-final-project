@@ -9,9 +9,9 @@ import {
   Image,
   Tag,
   Dropdown,
-  Menu,
   Tabs,
   DatePicker,
+  Grid,
   Space,
   message,
   Popconfirm,
@@ -30,6 +30,8 @@ import {
   SearchOutlined,
   UploadOutlined,
   UserOutlined,
+  FilterOutlined,
+  SelectOutlined,
   LogoutOutlined,
   CheckSquareOutlined,
   DeleteOutlined,
@@ -54,13 +56,15 @@ import PageHeaderBar from '../common/PageHeaderBar';
 
 const { Sider, Content } = Layout;
 const { RangePicker } = DatePicker;
-const { TabPane } = Tabs;
+const { useBreakpoint } = Grid;
+
+ 
 
 // 将后端数据格式转换为前端格式
 const transformImageData = (image: any): ImageInfo => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
   
-    return {
+  return {
     id: image.id,
     filename: image.originalFilename,
     url: `${API_BASE_URL}/${image.storedPath}`,
@@ -71,18 +75,20 @@ const transformImageData = (image: any): ImageInfo => {
       name: tag.name,
       type: tag.type,
     })) || [],
-      exif: {
+    exif: {
       location: image.location || undefined,
       device: image.deviceInfo || undefined,
       dateTime: image.shootingTime || undefined,
       width: image.resolution ? parseInt(image.resolution.split('x')[0]) : undefined,
       height: image.resolution ? parseInt(image.resolution.split('x')[1]) : undefined,
-      },
-    };
+    },
+  };
 };
 
 const HomeComponent = observer(() => {
   const navigate = useNavigate();
+  const screens = useBreakpoint();
+  const isMobile = !screens?.md;
   const [collapsed, setCollapsed] = useState(false);
   const [searchMode, setSearchMode] = useState<'quick' | 'advanced'>('quick');
   const [advancedTab, setAdvancedTab] = useState<'condition' | 'ai'>('condition');
@@ -118,6 +124,24 @@ const HomeComponent = observer(() => {
   const [aiSearchQuery, setAiSearchQuery] = useState('');
   const [isAiSearchActive, setIsAiSearchActive] = useState(false);
 
+  // Mobile full-screen filter drawer states (temps used so confirm/cancel can be handled)
+  const [mobileFilterVisible, setMobileFilterVisible] = useState(false);
+  const [tempSearchMode, setTempSearchMode] = useState<'quick' | 'advanced'>('quick');
+  const [tempAdvancedTab, setTempAdvancedTab] = useState<'condition' | 'ai'>('condition');
+  const [tempQuickSearch, setTempQuickSearch] = useState('');
+  const [tempSelectedTags, setTempSelectedTags] = useState<Set<string>>(new Set());
+  const [tempDateRange, setTempDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [tempAdvancedSearch, setTempAdvancedSearch] = useState({
+    filename: '',
+    tags: [] as string[],
+    dateRange: null as [Dayjs | null, Dayjs | null] | null,
+    location: '',
+    device: '',
+  });
+  const [tempAiSearchQuery, setTempAiSearchQuery] = useState('');
+  // Mobile search modal
+  const [mobileSearchVisible, setMobileSearchVisible] = useState(false);
+  const [mobileSearchQuery, setMobileSearchQuery] = useState('');
   // 真实数据
   const [allImages, setAllImages] = useState<ImageInfo[]>([]);
   const [filteredImages, setFilteredImages] = useState<ImageInfo[]>([]);
@@ -342,7 +366,7 @@ const HomeComponent = observer(() => {
           }
           if (interpreted.location) {
             parts.push(`地点: ${interpreted.location}`);
-    }
+          }
           if (interpreted.dateRange?.start || interpreted.dateRange?.end) {
             const start = interpreted.dateRange.start ? new Date(interpreted.dateRange.start).toLocaleDateString() : '';
             const end = interpreted.dateRange.end ? new Date(interpreted.dateRange.end).toLocaleDateString() : '';
@@ -410,6 +434,105 @@ const HomeComponent = observer(() => {
     setIsAiSearchActive(false);
     setCurrentPage(1); // 重置时回到第一页
     loadImages();
+  };
+
+  // Mobile drawer helpers
+  const openMobileFilter = () => {
+    setTempSearchMode(searchMode);
+    setTempAdvancedTab(advancedTab);
+    setTempQuickSearch(quickSearch);
+    setTempSelectedTags(new Set(selectedTags));
+    setTempDateRange(dateRange);
+    setTempAdvancedSearch({ ...advancedSearch });
+    setTempAiSearchQuery(aiSearchQuery);
+    setMobileFilterVisible(true);
+  };
+
+  const handleMobileFilterCancel = () => {
+    setMobileFilterVisible(false);
+  };
+
+  const handleMobileFilterConfirm = async () => {
+    // Apply main state
+    setSearchMode(tempSearchMode);
+    setAdvancedTab(tempAdvancedTab);
+    setQuickSearch(tempQuickSearch);
+    setSelectedTags(new Set(tempSelectedTags));
+    setDateRange(tempDateRange);
+    setAdvancedSearch({ ...tempAdvancedSearch });
+    setAiSearchQuery(tempAiSearchQuery);
+    setCurrentPage(1);
+    setMobileFilterVisible(false);
+
+    // Immediately fetch using the temp values (don't rely on setState async)
+    try {
+      setLoading(true);
+      // If user used AI tab with a query, call AI search
+      if (tempAdvancedTab === 'ai' && tempAiSearchQuery.trim()) {
+        const response = await imageApi.searchByDialog({
+          query: tempAiSearchQuery,
+          page: 1,
+          limit: pageSize,
+        });
+        if (response.success && response.data) {
+          const transformed = response.data.images.map(transformImageData);
+          setAllImages(transformed);
+          setFilteredImages(transformed);
+          setTotalImages(response.data.pagination?.total || transformed.length);
+          setCurrentPage(response.data.pagination?.page || 1);
+        } else {
+          message.error(response.message || 'AI 搜索失败');
+        }
+        return;
+      }
+
+      // Otherwise perform normal images fetch using temp filters
+      const params: any = { page: 1, limit: pageSize };
+      if (tempSearchMode === 'quick') {
+        if (tempQuickSearch) params.keyword = tempQuickSearch;
+        if (tempSelectedTags.size > 0) {
+          const tagNames = Array.from(tempSelectedTags).map((tagId) => {
+            const tag = allTags.find((t) => t.id === tagId);
+            return tag?.name;
+          }).filter(Boolean);
+          if (tagNames.length > 0) params.tags = tagNames;
+        }
+        if (tempDateRange && tempDateRange[0] && tempDateRange[1]) {
+          params.startDate = tempDateRange[0].startOf('day').toISOString();
+          params.endDate = tempDateRange[1].endOf('day').toISOString();
+        }
+      } else {
+        if (tempAdvancedSearch.filename) params.keyword = tempAdvancedSearch.filename;
+        if (tempAdvancedSearch.tags.length > 0) {
+          const tagNames = tempAdvancedSearch.tags.map((tagId) => {
+            const tag = allTags.find((t) => t.id === tagId);
+            return tag?.name;
+          }).filter(Boolean);
+          if (tagNames.length > 0) params.tags = tagNames;
+        }
+        if (tempAdvancedSearch.dateRange && tempAdvancedSearch.dateRange[0] && tempAdvancedSearch.dateRange[1]) {
+          params.startDate = tempAdvancedSearch.dateRange[0].startOf('day').toISOString();
+          params.endDate = tempAdvancedSearch.dateRange[1].endOf('day').toISOString();
+        }
+        if (tempAdvancedSearch.location) params.location = tempAdvancedSearch.location;
+      }
+
+      const response = await imageApi.getImages(params);
+      if (response.success && response.data) {
+        const transformed = response.data.images.map(transformImageData);
+        setAllImages(transformed);
+        setFilteredImages(transformed);
+        setTotalImages(response.data.pagination.total);
+        setCurrentPage(response.data.pagination.page);
+      } else {
+        message.error(response.message || '搜索失败');
+      }
+    } catch (error: any) {
+      console.error('移动筛选搜索失败:', error);
+      message.error(error?.response?.data?.message || '搜索失败，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 选择模式切换
@@ -589,14 +712,15 @@ const HomeComponent = observer(() => {
     navigate('/login', { replace: true });
   };
 
-  // 用户菜单
-  const userMenu = (
-    <Menu>
-      <Menu.Item key="logout" icon={<LogoutOutlined />} onClick={handleLogout}>
-        退出登录
-      </Menu.Item>
-    </Menu>
-  );
+  // 用户菜单 items (antd v5 Dropdown expects menu={{ items }})
+  const userMenuItemsLocal = [
+    {
+      key: 'logout',
+      label: '退出登录',
+      icon: <LogoutOutlined />,
+      onClick: handleLogout,
+    },
+  ];
 
   // 获取所有地点和设备（用于高级搜索）
   const allLocations = useMemo(() => {
@@ -639,31 +763,47 @@ const HomeComponent = observer(() => {
             >
               图
             </div>
-            <div style={{ color: 'white', fontSize: '20px', fontWeight: 'bold' }}>
+          <div style={{ color: 'white', fontSize: isMobile ? 14 : 20, fontWeight: 'bold' }}>
               图片管理系统
             </div>
           </div>
         }
         center={
-          <div style={{ width: '100%', maxWidth: 400 }}>
-            <Input
-              placeholder="搜索文件名、标签..."
-              prefix={<SearchOutlined />}
-              value={quickSearch}
-              onChange={(e) => setQuickSearch(e.target.value)}
-              allowClear
-            />
-          </div>
+          !isMobile ? (
+            <div style={{ width: '100%', maxWidth: isMobile ? 220 : 400 }}>
+              <Input
+                placeholder="搜索文件名、标签..."
+                prefix={<SearchOutlined />}
+                value={quickSearch}
+                onChange={(e) => setQuickSearch(e.target.value)}
+                allowClear
+              />
+            </div>
+          ) : null
         }
         right={
           <Space>
+            {isMobile && (
+              <Button type="default" icon={<SearchOutlined />} onClick={() => { setMobileSearchQuery(quickSearch); setMobileSearchVisible(true); }} aria-label="搜索" />
+            )}
+            {isMobile ? (
+              <Button type="default" icon={<FilterOutlined />} onClick={openMobileFilter} aria-label="筛选" />
+            ) : (
+              <Button type="default" icon={<FilterOutlined />} onClick={openMobileFilter}>
+                筛选
+              </Button>
+            )}
+            {isMobile ? (
+              <Button type="default" icon={<UploadOutlined />} onClick={() => navigate('/upload')} aria-label="上传" />
+            ) : (
             <Button type="primary" icon={<UploadOutlined />} onClick={() => navigate('/upload')}>
               上传
             </Button>
-            <Dropdown overlay={userMenu} placement="bottomRight">
+            )}
+            <Dropdown menu={{ items: userMenuItemsLocal }} placement="bottomRight">
               <Button type="text" style={{ color: 'white' }}>
                 <Avatar size="small" src={userStore.user?.avatar} icon={<UserOutlined />} />
-                <span style={{ marginLeft: 8 }}>{userStore.user?.username || '用户'}</span>
+                {!isMobile && <span style={{ marginLeft: 8 }}>{userStore.user?.username || '用户'}</span>}
               </Button>
             </Dropdown>
           </Space>
@@ -671,6 +811,7 @@ const HomeComponent = observer(() => {
       />
 
       <Layout>
+        {!isMobile && (
         <Sider
           collapsible
           collapsed={collapsed}
@@ -679,6 +820,7 @@ const HomeComponent = observer(() => {
           collapsedWidth={0}
           style={{ background: '#fff' }}
         >
+          {/* Sider tabs rewritten to use `items` API (antd v5) */}
           <Tabs
             activeKey={searchMode}
             onChange={(key) => {
@@ -687,8 +829,11 @@ const HomeComponent = observer(() => {
               setAiSearchQuery('');
             }}
             style={{ padding: '16px' }}
-          >
-            <TabPane tab="快速筛选" key="quick">
+            items={[
+              {
+                key: 'quick',
+                label: '快速筛选',
+                children: (
               <Space direction="vertical" style={{ width: '100%' }} size="middle">
                 <div>
                   <div style={{ marginBottom: 12, fontWeight: 'bold' }}>标签云</div>
@@ -721,15 +866,21 @@ const HomeComponent = observer(() => {
                   重置
                 </Button>
               </Space>
-            </TabPane>
-
-            <TabPane tab="高级搜索" key="advanced">
+                ),
+              },
+              {
+                key: 'advanced',
+                label: '高级搜索',
+                children: (
               <Tabs
                 activeKey={advancedTab}
                 onChange={(key) => setAdvancedTab(key as 'condition' | 'ai')}
                 size="small"
-              >
-                <TabPane tab="条件搜索" key="condition">
+                    items={[
+                      {
+                        key: 'condition',
+                        label: '条件搜索',
+                        children: (
                   <Space direction="vertical" style={{ width: '100%' }} size="middle">
                     <div>
                       <div style={{ marginBottom: 8 }}>文件名</div>
@@ -815,9 +966,12 @@ const HomeComponent = observer(() => {
                       重置
                     </Button>
                   </Space>
-                </TabPane>
-
-                <TabPane tab="AI 搜索" key="ai">
+                        ),
+                      },
+                      {
+                        key: 'ai',
+                        label: 'AI 搜索',
+                        children: (
                   <Space direction="vertical" style={{ width: '100%' }} size="middle">
                     <div>
                       <div style={{ marginBottom: 8 }}>自然语言搜索</div>
@@ -835,11 +989,303 @@ const HomeComponent = observer(() => {
                       重置
                     </Button>
                   </Space>
-                </TabPane>
-              </Tabs>
-            </TabPane>
-          </Tabs>
+                        ),
+                      },
+                    ]}
+                  />
+                ),
+              },
+            ]}
+          />
         </Sider>
+        )}
+
+        {/* Mobile full-screen filter Drawer */}
+        <Drawer
+          open={mobileFilterVisible}
+          onClose={handleMobileFilterCancel}
+          width="100%"
+          placement="left"
+          closable={false}
+          style={{ height: '100vh' }}
+          styles={{
+            body: {
+              padding: 16,
+              height: '100vh',
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: '#fff',
+              position: 'relative',
+            },
+          }}
+        >
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <Tabs
+              activeKey={tempSearchMode}
+              onChange={(key) => {
+                setTempSearchMode(key as 'quick' | 'advanced');
+                setTempAiSearchQuery('');
+              }}
+              style={{ padding: '8px' }}
+              items={[
+                {
+                  key: 'quick',
+                  label: '快速筛选',
+                  children: (
+                    <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                      <div>
+                        <div style={{ marginBottom: 12, fontWeight: 'bold' }}>标签云</div>
+                        <Space wrap>
+                          {tagCloud.map((tag) => (
+                            <Tag
+                              key={tag.id}
+                              color={tempSelectedTags.has(tag.id) ? 'blue' : 'default'}
+                              style={{ cursor: 'pointer', marginBottom: 8 }}
+                              onClick={() => {
+                                const newSet = new Set(tempSelectedTags);
+                                if (newSet.has(tag.id)) newSet.delete(tag.id);
+                                else newSet.add(tag.id);
+                                setTempSelectedTags(newSet);
+                              }}
+                            >
+                              {tag.name} ({tag.count})
+                            </Tag>
+                          ))}
+                        </Space>
+                      </div>
+                      <div>
+                        <div style={{ marginBottom: 12, fontWeight: 'bold' }}>时间范围</div>
+                        <RangePicker
+                          style={{ width: '100%' }}
+                          value={tempDateRange}
+                          onChange={(dates) => setTempDateRange(dates as [Dayjs | null, Dayjs | null] | null)}
+                        />
+                      </div>
+                      <Button
+                        icon={<ReloadOutlined />}
+                        onClick={() => {
+                          setTempQuickSearch('');
+                          setTempSelectedTags(new Set());
+                          setTempDateRange(null);
+                        }}
+                        block
+                      >
+                        重置
+                      </Button>
+                    </Space>
+                  ),
+                },
+                {
+                  key: 'advanced',
+                  label: '高级搜索',
+                  children: (
+                    <Tabs
+                      activeKey={tempAdvancedTab}
+                      onChange={(key) => setTempAdvancedTab(key as 'condition' | 'ai')}
+                      size="small"
+                      items={[
+                        {
+                          key: 'condition',
+                          label: '条件搜索',
+                          children: (
+                            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                              <div>
+                                <div style={{ marginBottom: 8 }}>文件名</div>
+                                <Input
+                                  placeholder="输入文件名"
+                                  value={tempAdvancedSearch.filename}
+                                  onChange={(e) =>
+                                    setTempAdvancedSearch({ ...tempAdvancedSearch, filename: e.target.value })
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <div style={{ marginBottom: 8 }}>标签</div>
+                                <Select
+                                  mode="multiple"
+                                  placeholder="选择标签"
+                                  style={{ width: '100%' }}
+                                  value={tempAdvancedSearch.tags}
+                                  onChange={(value) =>
+                                    setTempAdvancedSearch({ ...tempAdvancedSearch, tags: value })
+                                  }
+                                >
+                                  {allTags.map((tag) => (
+                                    <Select.Option key={tag.id} value={tag.id}>
+                                      {tag.name}
+                                    </Select.Option>
+                                  ))}
+                                </Select>
+                              </div>
+                              <div>
+                                <div style={{ marginBottom: 8 }}>时间范围</div>
+                                <RangePicker
+                                  style={{ width: '100%' }}
+                                  value={tempAdvancedSearch.dateRange}
+                                  onChange={(dates) =>
+                                    setTempAdvancedSearch({
+                                      ...tempAdvancedSearch,
+                                      dateRange: dates as [Dayjs | null, Dayjs | null] | null,
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <div style={{ marginBottom: 8 }}>拍摄地点</div>
+                                <Select
+                                  placeholder="选择地点"
+                                  style={{ width: '100%' }}
+                                  value={tempAdvancedSearch.location}
+                                  onChange={(value) =>
+                                    setTempAdvancedSearch({ ...tempAdvancedSearch, location: value })
+                                  }
+                                  allowClear
+                                >
+                                  {allLocations.map((loc) => (
+                                    <Select.Option key={loc} value={loc}>
+                                      {loc}
+                                    </Select.Option>
+                                  ))}
+                                </Select>
+                              </div>
+                              <div>
+                                <div style={{ marginBottom: 8 }}>拍摄设备</div>
+                                <Select
+                                  placeholder="选择设备"
+                                  style={{ width: '100%' }}
+                                  value={tempAdvancedSearch.device}
+                                  onChange={(value) =>
+                                    setTempAdvancedSearch({ ...tempAdvancedSearch, device: value })
+                                  }
+                                  allowClear
+                                >
+                                  {allDevices.map((dev) => (
+                                    <Select.Option key={dev} value={dev}>
+                                      {dev}
+                                    </Select.Option>
+                                  ))}
+                                </Select>
+                              </div>
+                              {/* 搜索按钮在移动端 Drawer 中移除；由底部“确定”触发 */}
+                              <Button onClick={() => {
+                                setTempAdvancedSearch({
+                                  filename: '',
+                                  tags: [],
+                                  dateRange: null,
+                                  location: '',
+                                  device: '',
+                                });
+                                setTempAiSearchQuery('');
+                              }} block>
+                                重置
+                              </Button>
+                            </Space>
+                          ),
+                        },
+                        {
+                          key: 'ai',
+                          label: 'AI 搜索',
+                          children: (
+                            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                              <div>
+                                <div style={{ marginBottom: 8 }}>自然语言搜索</div>
+                                <Input.TextArea
+                                  placeholder='例如："找找我在海边拍的照片"'
+                                  rows={4}
+                                  value={tempAiSearchQuery}
+                                  onChange={(e) => setTempAiSearchQuery(e.target.value)}
+                                />
+                              </div>
+                              <Button onClick={() => {
+                                setTempAiSearchQuery('');
+                              }} block>
+                                重置
+                              </Button>
+                            </Space>
+                          ),
+                        },
+                      ]}
+                    />
+                  ),
+                },
+              ]}
+            />
+          </div>
+
+          <div style={{ position: 'sticky', bottom: 0, left: 0, right: 0, padding: 12, background: '#fff', borderTop: '1px solid #eee', display: 'flex', gap: 12 }}>
+            <Button block onClick={handleMobileFilterCancel}>取消</Button>
+            <Button type="primary" block onClick={handleMobileFilterConfirm}>确定</Button>
+          </div>
+        </Drawer>
+
+        {/* Mobile search Modal */}
+        <Modal
+          title="搜索"
+          open={mobileSearchVisible}
+          onCancel={() => setMobileSearchVisible(false)}
+          okText="确定"
+          cancelText="取消"
+          onOk={async () => {
+            setMobileSearchVisible(false);
+            // apply mobileSearchQuery as quickSearch and fetch
+            const tempQuery = mobileSearchQuery || '';
+            setQuickSearch(tempQuery);
+            setCurrentPage(1);
+            try {
+              setLoading(true);
+              const params: any = { page: 1, limit: pageSize };
+              if (tempQuery) params.keyword = tempQuery;
+              const response = await imageApi.getImages(params);
+              if (response.success && response.data) {
+                const transformed = response.data.images.map(transformImageData);
+                setAllImages(transformed);
+                setFilteredImages(transformed);
+                setTotalImages(response.data.pagination.total);
+                setCurrentPage(response.data.pagination.page);
+              } else {
+                message.error(response.message || '搜索失败');
+              }
+            } catch (error: any) {
+              console.error('移动搜索失败:', error);
+              message.error(error?.response?.data?.message || '搜索失败，请稍后重试');
+            } finally {
+              setLoading(false);
+            }
+          }}
+        >
+          <Input
+            placeholder="输入搜索内容"
+            value={mobileSearchQuery}
+            onChange={(e) => setMobileSearchQuery(e.target.value)}
+            onPressEnter={async () => {
+              // same as OK
+              setMobileSearchVisible(false);
+              const tempQuery = mobileSearchQuery || '';
+              setQuickSearch(tempQuery);
+              setCurrentPage(1);
+              try {
+                setLoading(true);
+                const params: any = { page: 1, limit: pageSize };
+                if (tempQuery) params.keyword = tempQuery;
+                const response = await imageApi.getImages(params);
+                if (response.success && response.data) {
+                  const transformed = response.data.images.map(transformImageData);
+                  setAllImages(transformed);
+                  setFilteredImages(transformed);
+                  setTotalImages(response.data.pagination.total);
+                  setCurrentPage(response.data.pagination.page);
+                } else {
+                  message.error(response.message || '搜索失败');
+                }
+              } catch (error: any) {
+                console.error('移动搜索失败:', error);
+                message.error(error?.response?.data?.message || '搜索失败，请稍后重试');
+              } finally {
+                setLoading(false);
+              }
+            }}
+          />
+        </Modal>
 
         <Content style={{ padding: '24px', background: '#f0f2f5' }}>
           <Card
@@ -849,33 +1295,48 @@ const HomeComponent = observer(() => {
                 <Space>
                   {selectionMode && (
                     <>
-                      <Button
-                        onClick={handleSelectAll}
-                      >
-                        {selectedImages.size === filteredImages.length ? '取消全选' : '全选'}
-                      </Button>
-                      <Button
-                        icon={<PlusOutlined />}
-                        onClick={handleBatchAddTags}
-                      >
-                        批量添加标签
-                      </Button>
-                      <Popconfirm
-                        title={`确定要删除选中的 ${selectedImages.size} 张图片吗？`}
-                        onConfirm={handleBatchDelete}
-                      >
-                        <Button danger icon={<DeleteOutlined />}>
-                          批量删除
-                        </Button>
-                      </Popconfirm>
-                      {selectedImages.size > 0 && (
-                        <Button
-                          type="primary"
-                          icon={<EyeOutlined />}
-                          onClick={handleCarousel}
-                        >
-                          全屏轮播 ({selectedImages.size})
-                        </Button>
+                      {isMobile ? (
+                        <>
+                          <Tooltip title={selectedImages.size === filteredImages.length ? '取消全选' : '全选'}>
+                            <Button icon={<SelectOutlined />} onClick={handleSelectAll} aria-label="全选" />
+                          </Tooltip>
+                          <Tooltip title="批量添加标签">
+                            <Button icon={<PlusOutlined />} onClick={handleBatchAddTags} aria-label="批量添加标签" />
+                          </Tooltip>
+                          <Popconfirm
+                            title={`确定要删除选中的 ${selectedImages.size} 张图片吗？`}
+                            onConfirm={handleBatchDelete}
+                          >
+                            <Button danger icon={<DeleteOutlined />} aria-label="批量删除" />
+                          </Popconfirm>
+                          {selectedImages.size > 0 && (
+                            <Tooltip title={`全屏轮播 (${selectedImages.size})`}>
+                              <Button type="primary" icon={<EyeOutlined />} onClick={handleCarousel} aria-label="全屏轮播" />
+                            </Tooltip>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <Button onClick={handleSelectAll}>
+                            {selectedImages.size === filteredImages.length ? '取消全选' : '全选'}
+                          </Button>
+                          <Button icon={<PlusOutlined />} onClick={handleBatchAddTags}>
+                            批量添加标签
+                          </Button>
+                          <Popconfirm
+                            title={`确定要删除选中的 ${selectedImages.size} 张图片吗？`}
+                            onConfirm={handleBatchDelete}
+                          >
+                            <Button danger icon={<DeleteOutlined />}>
+                              批量删除
+                            </Button>
+                          </Popconfirm>
+                          {selectedImages.size > 0 && (
+                            <Button type="primary" icon={<EyeOutlined />} onClick={handleCarousel}>
+                              全屏轮播 ({selectedImages.size})
+                            </Button>
+                          )}
+                        </>
                       )}
                     </>
                   )}
@@ -883,8 +1344,9 @@ const HomeComponent = observer(() => {
                     icon={<CheckSquareOutlined />}
                     onClick={handleToggleSelectionMode}
                     type={selectionMode ? 'primary' : 'default'}
+                    aria-label={selectionMode ? '取消选择' : '选择模式'}
                   >
-                    {selectionMode ? '取消选择' : '选择模式'}
+                    {!isMobile && (selectionMode ? '取消选择' : '选择模式')}
                   </Button>
                 </Space>
               </div>
@@ -905,7 +1367,7 @@ const HomeComponent = observer(() => {
                     <Col
                       key={image.id}
                       xs={12}
-                      sm={6}
+                      sm={12}
                       md={6}
                       lg={4}
                       xl={4}
@@ -988,12 +1450,14 @@ const HomeComponent = observer(() => {
                         display: 'flex',
                         flexDirection: 'column',
                       }}
-                      bodyStyle={{
+                      styles={{
+                        body: {
                         transition: 'all 0.3s ease',
                         flex: 1,
                         display: 'flex',
                         flexDirection: 'column',
                         padding: '12px',
+                        },
                       }}
                     >
                       <Card.Meta
@@ -1150,12 +1614,20 @@ const HomeComponent = observer(() => {
                 size="small"
                 bordered
                 labelStyle={{ 
-                  width: '80px', 
+                  width: '64px', 
                   padding: '8px 12px',
                   backgroundColor: '#fafafa',
                   fontWeight: 500,
                 }}
-                contentStyle={{ padding: '8px 12px' }}
+                contentStyle={{ 
+                  padding: '8px 12px',
+                  // force wrapping of long words and reduce font size slightly for modal content
+                  wordBreak: 'break-word',
+                  overflowWrap: 'anywhere',
+                  whiteSpace: 'normal',
+                  fontSize: 13,
+                  maxWidth: 'calc(100% - 64px)',
+                }}
               >
                 <Descriptions.Item label="文件名">
                   <div style={{ wordBreak: 'break-all' }}>{previewImage.filename}</div>
@@ -1242,13 +1714,15 @@ const HomeComponent = observer(() => {
         placement="top"
         closable={false}
         style={{ height: '100vh' }}
-        bodyStyle={{ 
+        styles={{
+          body: {
           padding: 0, 
           height: '100vh', 
           display: 'flex', 
           flexDirection: 'column',
           backgroundColor: '#000',
           position: 'relative',
+          },
         }}
       >
         {carouselImages.length > 0 && (
@@ -1436,14 +1910,16 @@ const HomeComponent = observer(() => {
               )}
 
               {/* 键盘提示 */}
-              <div style={{
-                marginTop: 12,
-                textAlign: 'center',
-                fontSize: 12,
-                color: '#888',
-              }}>
-                ← → 切换图片 · 空格 播放/暂停 · ESC 关闭
-              </div>
+              {!isMobile && (
+                <div style={{
+                  marginTop: 12,
+                  textAlign: 'center',
+                  fontSize: 12,
+                  color: '#888',
+                }}>
+                  ← → 切换图片 · 空格 播放/暂停 · ESC 关闭
+                </div>
+              )}
             </div>
           </>
         )}

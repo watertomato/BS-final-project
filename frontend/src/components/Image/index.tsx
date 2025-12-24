@@ -17,6 +17,7 @@ import {
   Popconfirm,
   Modal,
 } from 'antd';
+import { Grid } from 'antd';
 import {
   ArrowLeftOutlined,
   EditOutlined,
@@ -63,6 +64,9 @@ const transformImageData = (image: any): ImageInfo => {
 const ImageDetailComponent = observer(() => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { useBreakpoint } = Grid;
+  const screens = useBreakpoint();
+  const isMobile = !screens?.md;
   const [loading, setLoading] = useState(true);
   const [image, setImage] = useState<ImageInfo | null>(null);
   const [allImages, setAllImages] = useState<ImageInfo[]>([]);
@@ -180,10 +184,20 @@ const ImageDetailComponent = observer(() => {
     if (!tag) return;
 
     try {
-      await imageApi.removeImageTag(image.id, tagId);
-      // 重新加载图片详情
-      await loadImageDetail(image.id);
-      message.success('标签删除成功');
+      const response = await imageApi.removeImageTag(image.id, tagId);
+      if (response.success) {
+        // update local state without reloading the page to avoid navigation/scroll
+        setImage((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            tags: prev.tags ? prev.tags.filter((t) => t.id !== tagId) : [],
+          };
+        });
+        message.success('标签删除成功');
+      } else {
+        message.error(response.message || '删除标签失败');
+      }
     } catch (error: any) {
       message.error(error?.response?.data?.message || '删除标签失败');
       console.error(error);
@@ -318,25 +332,38 @@ const ImageDetailComponent = observer(() => {
       <PageHeaderBar
         left={
           <Space size={12} align="center">
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/home')}>
-              返回
-            </Button>
-            <span style={{ fontSize: 18, fontWeight: 600, color: 'white' }}>图片详情</span>
+            {isMobile ? (
+              <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/home')} aria-label="返回" />
+            ) : (
+              <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/home')}>
+                返回
+              </Button>
+            )}
+            <span style={{ fontSize: isMobile ? 14 : 18, fontWeight: 600, color: 'white' }}>图片详情</span>
           </Space>
         }
         center={
           image ? (
-            <span style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 16 }}>{image.filename}</span>
+            <span style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: isMobile ? 13 : 16 }}>{image.filename}</span>
           ) : undefined
         }
         right={
           <Space>
-            <Button icon={<EditOutlined />} onClick={handleEdit}>
-              图像编辑
-            </Button>
-            <Button icon={<PlusOutlined />} type="primary" onClick={() => navigate('/upload')}>
-              上传新图片
-            </Button>
+            {isMobile ? (
+              <>
+                <Button icon={<EditOutlined />} onClick={handleEdit} aria-label="图像编辑" />
+                <Button icon={<PlusOutlined />} type="default" onClick={() => navigate('/upload')} aria-label="上传新图片" />
+              </>
+            ) : (
+              <>
+                <Button icon={<EditOutlined />} onClick={handleEdit}>
+                  图像编辑
+                </Button>
+                <Button icon={<PlusOutlined />} type="primary" onClick={() => navigate('/upload')}>
+                  上传新图片
+                </Button>
+              </>
+            )}
           </Space>
         }
       />

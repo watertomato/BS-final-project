@@ -183,13 +183,13 @@ export const getImages = async (req, res, next) => {
       if (tagArray.length > 0) {
         // 为每个标签创建一个条件，使用 AND 连接
         const tagConditions = tagArray.map(tagName => ({
-        imageTags: {
-          some: {
-            tag: {
+          imageTags: {
+            some: {
+              tag: {
                 name: tagName
+              }
             }
           }
-        }
         }));
         
         // 如果只有一个标签，直接添加；如果有多个标签，需要确保图片同时包含所有标签
@@ -693,8 +693,12 @@ export const downloadImage = async (req, res, next) => {
 
     // 设置响应头，强制下载
     // 使用 RFC 5987 编码处理中文文件名
-    const filename = encodeURIComponent(image.originalFilename);
-    res.setHeader('Content-Disposition', `attachment; filename="${image.originalFilename}"; filename*=UTF-8''${filename}`);
+    // Sanitize filename to avoid invalid characters in header (CRLF, quotes, etc.)
+    const rawFilename = image.originalFilename || 'download';
+    const sanitizedFilename = rawFilename.replace(/[\r\n"]/g, '').trim() || 'download';
+    const encodedFilename = encodeURIComponent(sanitizedFilename);
+    // Use only the RFC5987 encoded filename* to avoid invalid characters in the simple filename parameter
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
     res.setHeader('Content-Type', 'application/octet-stream');
 
     // 发送文件
