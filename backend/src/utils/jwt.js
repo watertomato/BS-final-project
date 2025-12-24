@@ -1,14 +1,15 @@
 import jwt from 'jsonwebtoken';
 
 export const generateToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  });
+  const secret = process.env.JWT_SECRET || 'devsecret';
+  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+  return jwt.sign(payload, secret, { expiresIn });
 };
 
 export const verifyToken = (token) => {
   try {
-    return jwt.verify(token, process.env.JWT_SECRET);
+    const secret = process.env.JWT_SECRET || 'devsecret';
+    return jwt.verify(token, secret);
   } catch (error) {
     return null;
   }

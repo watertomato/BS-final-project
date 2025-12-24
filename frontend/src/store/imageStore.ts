@@ -46,7 +46,7 @@ export class ImageStore {
 
   constructor(userStore: UserStore) {
     this.userStore = userStore;
-    makeAutoObservable(this, { userStore: false }, { autoBind: true });
+    makeAutoObservable(this, {}, { autoBind: true });
 
     autorun(() => {
       if (this.userStore.isLoggedIn) {
@@ -180,9 +180,29 @@ export class ImageStore {
     }
     try {
       this.loading = true;
-      const response = await imageApi.getAllImages();
+      const response = await imageApi.getImages({ limit: 1000 });
       if (response.success && response.data) {
-        this.images = response.data;
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+        const imgs = response.data.images || [];
+        this.images = imgs.map((img: any) => ({
+          id: img.id.toString(),
+          filename: img.originalFilename,
+          url: `${API_BASE_URL}/${img.storedPath}`,
+          uploadTime: img.createdAt,
+          size: img.fileSize ? parseInt(img.fileSize) : undefined,
+          tags: img.tags?.map((t: any) => ({
+            id: t.id.toString(),
+            name: t.name,
+            type: t.type === 1 ? 'custom' : t.type === 2 ? 'exif' : 'ai',
+          })) || [],
+          exif: {
+            location: img.location || undefined,
+            device: img.deviceInfo || undefined,
+            dateTime: img.shootingTime || undefined,
+            width: img.resolution ? parseInt(img.resolution.split('x')[0]) : undefined,
+            height: img.resolution ? parseInt(img.resolution.split('x')[1]) : undefined,
+          },
+        }));
         this.refreshPaginationTotal();
       }
       this.error = null;

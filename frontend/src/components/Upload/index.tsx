@@ -26,7 +26,7 @@ import {
 import PageHeaderBar from '../common/PageHeaderBar';
 
 const { Dragger } = Upload;
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type UploadStatus = 'waiting' | 'uploading' | 'success' | 'error';
 

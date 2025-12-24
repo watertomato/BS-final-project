@@ -35,7 +35,7 @@ const { Title, Text } = Typography;
 
 // 将后端数据格式转换为前端格式
 const transformImageData = (image: any): ImageInfo => {
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/api\/?$/i, '');
   
   return {
     id: image.id,
@@ -261,9 +261,9 @@ const ImageEditor = observer(() => {
             {isMobile ? (
               <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(id ? `/image/${id}` : '/home')} aria-label="返回" />
             ) : (
-              <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(id ? `/image/${id}` : '/home')}>
-                返回
-              </Button>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(id ? `/image/${id}` : '/home')}>
+              返回
+            </Button>
             )}
             <span style={{ fontSize: isMobile ? 14 : 16, fontWeight: 600, color: '#fff' }}>图片编辑</span>
           </Space>
@@ -278,12 +278,12 @@ const ImageEditor = observer(() => {
               </>
             ) : (
               <>
-                <Button icon={<CloseOutlined />} onClick={handleCancel}>
-                  取消
-                </Button>
-                <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
-                  保存
-                </Button>
+            <Button icon={<CloseOutlined />} onClick={handleCancel}>
+              取消
+            </Button>
+            <Button type="primary" icon={<SaveOutlined />} onClick={handleSave} loading={saving}>
+              保存
+            </Button>
               </>
             )}
           </Space>

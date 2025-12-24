@@ -62,7 +62,7 @@ const { useBreakpoint } = Grid;
 
 // 将后端数据格式转换为前端格式
 const transformImageData = (image: any): ImageInfo => {
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/api\/?$/i, '');
   
   return {
     id: image.id,
@@ -567,10 +567,29 @@ const HomeComponent = observer(() => {
       message.warning('请先选择要删除的图片');
       return;
     }
-    // Mock 删除
-    message.success(`已删除 ${selectedImages.size} 张图片`);
-    setSelectedImages(new Set());
-    setSelectionMode(false);
+    try {
+      setLoading(true);
+      const ids = Array.from(selectedImages);
+      const results = await Promise.allSettled(ids.map((id) => imageApi.deleteImage(id)));
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+      if (succeeded > 0) {
+        message.success(`成功删除 ${succeeded} 张图片${failed > 0 ? `，${failed} 张删除失败` : ''}`);
+      }
+      if (failed > 0) {
+        console.error('批量删除失败详情:', results.filter((r) => r.status === 'rejected'));
+        message.error(`${failed} 张图片删除失败，请稍后重试`);
+      }
+      // 刷新列表
+      setSelectedImages(new Set());
+      setSelectionMode(false);
+      await loadImages();
+    } catch (error: any) {
+      console.error('批量删除失败:', error);
+      message.error(error?.response?.data?.message || '批量删除失败，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 批量添加标签
@@ -771,14 +790,14 @@ const HomeComponent = observer(() => {
         center={
           !isMobile ? (
             <div style={{ width: '100%', maxWidth: isMobile ? 220 : 400 }}>
-              <Input
-                placeholder="搜索文件名、标签..."
-                prefix={<SearchOutlined />}
-                value={quickSearch}
-                onChange={(e) => setQuickSearch(e.target.value)}
-                allowClear
-              />
-            </div>
+            <Input
+              placeholder="搜索文件名、标签..."
+              prefix={<SearchOutlined />}
+              value={quickSearch}
+              onChange={(e) => setQuickSearch(e.target.value)}
+              allowClear
+            />
+          </div>
           ) : null
         }
         right={
@@ -1318,23 +1337,23 @@ const HomeComponent = observer(() => {
                       ) : (
                         <>
                           <Button onClick={handleSelectAll}>
-                            {selectedImages.size === filteredImages.length ? '取消全选' : '全选'}
-                          </Button>
+                        {selectedImages.size === filteredImages.length ? '取消全选' : '全选'}
+                      </Button>
                           <Button icon={<PlusOutlined />} onClick={handleBatchAddTags}>
-                            批量添加标签
-                          </Button>
-                          <Popconfirm
-                            title={`确定要删除选中的 ${selectedImages.size} 张图片吗？`}
-                            onConfirm={handleBatchDelete}
-                          >
-                            <Button danger icon={<DeleteOutlined />}>
-                              批量删除
-                            </Button>
-                          </Popconfirm>
-                          {selectedImages.size > 0 && (
+                        批量添加标签
+                      </Button>
+                      <Popconfirm
+                        title={`确定要删除选中的 ${selectedImages.size} 张图片吗？`}
+                        onConfirm={handleBatchDelete}
+                      >
+                        <Button danger icon={<DeleteOutlined />}>
+                          批量删除
+                        </Button>
+                      </Popconfirm>
+                      {selectedImages.size > 0 && (
                             <Button type="primary" icon={<EyeOutlined />} onClick={handleCarousel}>
-                              全屏轮播 ({selectedImages.size})
-                            </Button>
+                          全屏轮播 ({selectedImages.size})
+                        </Button>
                           )}
                         </>
                       )}
@@ -1911,14 +1930,14 @@ const HomeComponent = observer(() => {
 
               {/* 键盘提示 */}
               {!isMobile && (
-                <div style={{
-                  marginTop: 12,
-                  textAlign: 'center',
-                  fontSize: 12,
-                  color: '#888',
-                }}>
-                  ← → 切换图片 · 空格 播放/暂停 · ESC 关闭
-                </div>
+              <div style={{
+                marginTop: 12,
+                textAlign: 'center',
+                fontSize: 12,
+                color: '#888',
+              }}>
+                ← → 切换图片 · 空格 播放/暂停 · ESC 关闭
+              </div>
               )}
             </div>
           </>

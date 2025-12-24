@@ -38,7 +38,7 @@ const { Content } = Layout;
 
 // 将后端数据格式转换为前端格式
 const transformImageData = (image: any): ImageInfo => {
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+  const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000').replace(/\/api\/?$/i, '');
   
   return {
     id: image.id,
@@ -194,7 +194,7 @@ const ImageDetailComponent = observer(() => {
             tags: prev.tags ? prev.tags.filter((t) => t.id !== tagId) : [],
           };
         });
-        message.success('标签删除成功');
+      message.success('标签删除成功');
       } else {
         message.error(response.message || '删除标签失败');
       }
@@ -335,9 +335,9 @@ const ImageDetailComponent = observer(() => {
             {isMobile ? (
               <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/home')} aria-label="返回" />
             ) : (
-              <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/home')}>
-                返回
-              </Button>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/home')}>
+              返回
+            </Button>
             )}
             <span style={{ fontSize: isMobile ? 14 : 18, fontWeight: 600, color: 'white' }}>图片详情</span>
           </Space>
@@ -356,12 +356,12 @@ const ImageDetailComponent = observer(() => {
               </>
             ) : (
               <>
-                <Button icon={<EditOutlined />} onClick={handleEdit}>
-                  图像编辑
-                </Button>
-                <Button icon={<PlusOutlined />} type="primary" onClick={() => navigate('/upload')}>
-                  上传新图片
-                </Button>
+            <Button icon={<EditOutlined />} onClick={handleEdit}>
+              图像编辑
+            </Button>
+            <Button icon={<PlusOutlined />} type="primary" onClick={() => navigate('/upload')}>
+              上传新图片
+            </Button>
               </>
             )}
           </Space>
