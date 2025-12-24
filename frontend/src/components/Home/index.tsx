@@ -109,6 +109,8 @@ const HomeComponent = observer(() => {
   const [editFilenameVisible, setEditFilenameVisible] = useState(false);
   const [newFilename, setNewFilename] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [batchTagModalVisible, setBatchTagModalVisible] = useState(false);
+  const [batchTagInput, setBatchTagInput] = useState('');
 
   // 搜索和筛选状态
   const [quickSearch, setQuickSearch] = useState('');
@@ -598,7 +600,52 @@ const HomeComponent = observer(() => {
       message.warning('请先选择图片');
       return;
     }
-    message.info('批量添加标签功能（Mock）');
+    setBatchTagInput('');
+    setBatchTagModalVisible(true);
+  };
+
+  const handleConfirmBatchAddTags = async () => {
+    if (selectedImages.size === 0) {
+      message.warning('请先选择图片');
+      setBatchTagModalVisible(false);
+      return;
+    }
+    const raw = batchTagInput || '';
+    const tags = raw
+      .split(/[,，\s]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    if (tags.length === 0) {
+      message.warning('请输入至少一个标签（逗号或空格分隔）');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const ids = Array.from(selectedImages);
+      const results = await Promise.allSettled(
+        ids.map((id) => imageApi.addImageTags(id, tags))
+      );
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.length - succeeded;
+      if (succeeded > 0) {
+        message.success(`成功为 ${succeeded} 张图片添加标签${failed > 0 ? `，${failed} 张失败` : ''}`);
+      }
+      if (failed > 0) {
+        console.error('批量添加标签失败详情:', results.filter((r) => r.status === 'rejected'));
+        message.error(`${failed} 张图片添加标签失败，请稍后重试`);
+      }
+      // 刷新列表
+      setSelectedImages(new Set());
+      setSelectionMode(false);
+      await loadImages();
+      setBatchTagModalVisible(false);
+    } catch (error: any) {
+      console.error('批量添加标签失败:', error);
+      message.error(error?.response?.data?.message || '批量添加标签失败，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // 全屏轮播
@@ -1719,6 +1766,24 @@ const HomeComponent = observer(() => {
           onChange={(e) => setNewFilename(e.target.value)}
           placeholder="请输入新文件名"
           onPressEnter={handleSaveFilename}
+        />
+      </Modal>
+
+      {/* 批量添加标签 Modal */}
+      <Modal
+        title="批量添加标签"
+        open={batchTagModalVisible}
+        onCancel={() => setBatchTagModalVisible(false)}
+        okText="添加"
+        cancelText="取消"
+        onOk={handleConfirmBatchAddTags}
+      >
+        <div style={{ marginBottom: 8 }}>请输入要添加的标签，用逗号或空格分隔：</div>
+        <Input
+          placeholder="例如：风景, 海边, 旅行"
+          value={batchTagInput}
+          onChange={(e) => setBatchTagInput(e.target.value)}
+          onPressEnter={handleConfirmBatchAddTags}
         />
       </Modal>
 
