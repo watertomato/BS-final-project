@@ -596,20 +596,12 @@ const HomeComponent = observer(() => {
 
   // 批量添加标签
   const handleBatchAddTags = () => {
-    if (selectedImages.size === 0) {
-      message.warning('请先选择图片');
-      return;
-    }
+    // Always open modal so user can enter tags; confirmation will ask how to apply if no images selected
     setBatchTagInput('');
     setBatchTagModalVisible(true);
   };
 
   const handleConfirmBatchAddTags = async () => {
-    if (selectedImages.size === 0) {
-      message.warning('请先选择图片');
-      setBatchTagModalVisible(false);
-      return;
-    }
     const raw = batchTagInput || '';
     const tags = raw
       .split(/[,，\s]+/)
@@ -620,32 +612,50 @@ const HomeComponent = observer(() => {
       return;
     }
 
-    try {
-      setLoading(true);
-      const ids = Array.from(selectedImages);
-      const results = await Promise.allSettled(
-        ids.map((id) => imageApi.addImageTags(id, tags))
-      );
-      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
-      const failed = results.length - succeeded;
-      if (succeeded > 0) {
-        message.success(`成功为 ${succeeded} 张图片添加标签${failed > 0 ? `，${failed} 张失败` : ''}`);
+    // If no images selected, ask user whether to apply to all currently displayed images
+    const applyToIds = async (ids: string[]) => {
+      try {
+        setLoading(true);
+        const results = await Promise.allSettled(ids.map((id) => imageApi.addImageTags(id, tags)));
+        const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+        const failed = results.length - succeeded;
+        if (succeeded > 0) {
+          message.success(`成功为 ${succeeded} 张图片添加标签${failed > 0 ? `，${failed} 张失败` : ''}`);
+        }
+        if (failed > 0) {
+          console.error('批量添加标签失败详情:', results.filter((r) => r.status === 'rejected'));
+          message.error(`${failed} 张图片添加标签失败，请稍后重试`);
+        }
+        // 刷新列表
+        setSelectedImages(new Set());
+        setSelectionMode(false);
+        await loadImages();
+        setBatchTagModalVisible(false);
+      } catch (error: any) {
+        console.error('批量添加标签失败:', error);
+        message.error(error?.response?.data?.message || '批量添加标签失败，请稍后重试');
+      } finally {
+        setLoading(false);
       }
-      if (failed > 0) {
-        console.error('批量添加标签失败详情:', results.filter((r) => r.status === 'rejected'));
-        message.error(`${failed} 张图片添加标签失败，请稍后重试`);
-      }
-      // 刷新列表
-      setSelectedImages(new Set());
-      setSelectionMode(false);
-      await loadImages();
-      setBatchTagModalVisible(false);
-    } catch (error: any) {
-      console.error('批量添加标签失败:', error);
-      message.error(error?.response?.data?.message || '批量添加标签失败，请稍后重试');
-    } finally {
-      setLoading(false);
+    };
+
+    if (selectedImages.size === 0) {
+      const total = filteredImages.length;
+      Modal.confirm({
+        title: '未选中图片',
+        content: `当前未选中任何图片。是否将标签应用到当前列表的所有 ${total} 张图片？`,
+        okText: '应用到所有',
+        cancelText: '取消',
+        onOk: async () => {
+          const ids = filteredImages.map((img) => img.id);
+          await applyToIds(ids);
+        },
+      });
+      return;
     }
+
+    // normal case: use selected images
+    await applyToIds(Array.from(selectedImages));
   };
 
   // 全屏轮播

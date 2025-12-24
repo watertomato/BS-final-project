@@ -556,18 +556,31 @@ export const addImageTags = async (req, res, next) => {
 
     // 为每个标签创建或查找，并建立关联
     for (const tagName of tags) {
-      // 查找或创建标签
+      // 查找或创建标签（并发创建时处理唯一约束冲突）
       let tag = await prisma.tag.findUnique({
         where: { name: tagName }
       });
 
       if (!tag) {
-        tag = await prisma.tag.create({
-          data: {
-            name: tagName,
-            type: 1, // 用户自定义标签
+        try {
+          tag = await prisma.tag.create({
+            data: {
+              name: tagName,
+              type: 1, // 用户自定义标签
+            }
+          });
+        } catch (err) {
+          // 如果并发创建导致唯一约束失败，则改为查询已存在的标签
+          if (err?.code === 'P2002') {
+            tag = await prisma.tag.findUnique({ where: { name: tagName } });
+            if (!tag) {
+              // 如果仍未找到，重新抛出原错误
+              throw err;
+            }
+          } else {
+            throw err;
           }
-        });
+        }
       }
 
       // 创建关联（如果已存在则忽略）
