@@ -1,6 +1,5 @@
 # 图片管理系统（Image Management System）
 
-简短介绍  
 这是一个用于上传、管理与检索图片的全栈示例应用，包含：用户注册/登录、图片上传（含 EXIF 提取）、缩略图生成、标签管理、AI 自动标注与对话式检索、以及图片编辑功能。后端使用 Node.js + Prisma（MySQL），前端使用 React + Vite + Ant Design，已提供 Docker Compose 配置供一键部署。
 
 ---
