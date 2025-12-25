@@ -10,7 +10,7 @@
 
 ```bash
 cp env.example .env
-# 编辑 .env，确保 DATABASE_URL、JWT_SECRET 等被正确设置；若使用 AI 功能请配置 AI_API_KEY 和 AI_MODEL
+# 编辑 .env，若使用 AI 功能请配置 AI_API_KEY 和 AI_MODEL，其他参数如不知道什么意思请不要修改
 ```
 
 构建并启动服务：
