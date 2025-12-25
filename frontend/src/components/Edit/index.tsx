@@ -13,7 +13,6 @@ import {
   Divider,
   Radio,
   Spin,
-  Modal,
   message,
   Grid,
 } from 'antd';
@@ -160,13 +159,7 @@ const ImageEditor = observer(() => {
   };
 
   const handleCancel = () => {
-    Modal.confirm({
-      title: '放弃编辑？',
-      content: '当前修改尚未保存，确认要离开编辑页面吗？',
-      okText: '确认',
-      cancelText: '继续编辑',
-      onOk: () => navigate(id ? `/image/${id}` : '/home'),
-    });
+    navigate(id ? `/image/${id}` : '/home');
   };
 
   const handleSave = async () => {

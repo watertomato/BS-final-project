@@ -563,12 +563,12 @@ export const addImageTags = async (req, res, next) => {
 
       if (!tag) {
         try {
-          tag = await prisma.tag.create({
-            data: {
-              name: tagName,
-              type: 1, // 用户自定义标签
-            }
-          });
+        tag = await prisma.tag.create({
+          data: {
+            name: tagName,
+            type: 1, // 用户自定义标签
+          }
+        });
         } catch (err) {
           // 如果并发创建导致唯一约束失败，则改为查询已存在的标签
           if (err?.code === 'P2002') {

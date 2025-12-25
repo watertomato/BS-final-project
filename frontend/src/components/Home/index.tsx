@@ -583,8 +583,8 @@ const HomeComponent = observer(() => {
         message.error(`${failed} 张图片删除失败，请稍后重试`);
       }
       // 刷新列表
-      setSelectedImages(new Set());
-      setSelectionMode(false);
+    setSelectedImages(new Set());
+    setSelectionMode(false);
       await loadImages();
     } catch (error: any) {
       console.error('批量删除失败:', error);
