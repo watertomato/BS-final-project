@@ -25,13 +25,11 @@ services:
       db:
         condition: service_healthy
     env_file:
-      - ./backend/.env
+      - ./.env
     environment:
       # Example DATABASE_URL; you can override via .env or environment
-      DATABASE_URL: "mysql://user:password@db:3306/imagedb"
+      DATABASE_URL: "mysql://user:password@tcp(db:3306)/imagedb"
       PORT: 3000
-      JWT_SECRET: "devsecret"
-      JWT_EXPIRES_IN: "7d"
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/prisma:/app/prisma
