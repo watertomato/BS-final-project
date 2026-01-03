@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "image-search": {
+      "command": "node",
+      "args": [
+        "C:/path/to/your/project/backend/src/mcp/index.js"
+      ],
+      "env": {
+        "MCP_DEFAULT_USER_ID": "1",
+        "DATABASE_URL": "mysql://user:password@localhost:3306/imagedb"
+      }
+    }
+  }
+}

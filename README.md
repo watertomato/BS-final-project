@@ -164,3 +164,203 @@ npm run dev
 
 前端默认会在 `http://localhost:5173` 启动，访问并登录测试上传/检索功能。
 
+---
+
+## 3. MCP 接口（大模型对话式图片检索）
+
+本项目提供 MCP (Model Context Protocol) 接口，允许大语言模型（如 Claude）通过自然语言对话方式检索图片库中的图片。
+
+### 3.1 功能特性
+
+- **自然语言搜索**：支持通过自然语言描述搜索图片（如"昨天拍的狗狗照片"、"风景图片"等）
+- **标签筛选**：可指定标签进行精确筛选
+- **地点搜索**：支持按拍摄地点搜索
+- **图片详情查询**：获取单张图片的详细信息
+- **标签管理**：列出所有可用标签
+
+### 3.2 MCP 工具列表
+
+#### `search_images`
+通过自然语言描述搜索图片
+- **参数**：
+  - `query` (必需): 搜索描述
+  - `limit` (可选): 最大返回数量，默认20
+  - `tags` (可选): 指定标签数组
+  - `location` (可选): 指定地点
+
+#### `get_image_details`
+获取指定图片的详细信息
+- **参数**：
+  - `image_id` (必需): 图片ID
+
+#### `list_user_tags`
+列出用户的所有标签
+- **参数**：
+  - `limit` (可选): 最大返回数量，默认50
+
+### 3.3 在 Claude Desktop 中使用
+
+1. **安装 Claude Desktop**（如果尚未安装）
+
+2. **配置 MCP 服务器**：
+   - 复制 `claude_desktop_config.json` 到 Claude Desktop 配置目录
+   - 根据你的系统修改路径：
+     - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+     - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+3. **修改配置文件中的路径**：
+   ```json
+   {
+     "mcpServers": {
+       "image-search": {
+         "command": "node",
+         "args": ["/absolute/path/to/your/project/backend/src/mcp/index.js"],
+         "env": {
+           "MCP_DEFAULT_USER_ID": "1",
+           "DATABASE_URL": "mysql://user:password@localhost:3306/imagedb"
+         }
+       }
+     }
+   }
+   ```
+
+4. **重启 Claude Desktop**
+
+5. **开始对话式搜索**：
+   现在你可以在 Claude 中这样对话：
+   - "帮我找找昨天拍的照片"
+   - "搜索包含狗狗的图片"
+   - "查看图片ID为123的详细信息"
+   - "列出我所有的标签"
+
+### 3.4 快速开始
+
+#### 1. 安装依赖
+
+```bash
+cd backend
+npm install
+```
+
+#### 2. 配置环境变量
+
+创建 `.env` 文件或设置环境变量：
+
+```bash
+export MCP_DEFAULT_USER_ID="1"  # 用户ID
+export DATABASE_URL="mysql://user:password@localhost:3306/imagedb"
+```
+
+#### 3. 启动 MCP 服务器
+
+**方式1：直接运行**
+```bash
+# 确保数据库正在运行
+docker compose up db -d
+
+# 安装依赖（如果还没有）
+cd backend && npm install
+
+# 启动MCP服务器c
+npm run mcp
+```
+
+**方式2：Docker Compose服务模式**
+```bash
+# 编辑 docker-compose.yml，取消注释 mcp 服务配置
+# 然后运行
+docker compose up mcp
+```
+
+注意：MCP服务器使用stdio通信，不需要端口映射，直接在容器内部运行。
+
+### 3.5 在 Claude Desktop 中使用
+
+1. **安装 Claude Desktop**（如果尚未安装）
+
+2. **配置 MCP 服务器**：
+   - 复制 `claude_desktop_config.json` 到 Claude Desktop 配置目录
+   - 根据你的系统修改路径：
+     - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+     - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+3. **修改配置文件中的路径**：
+   ```json
+   {
+     "mcpServers": {
+       "image-search": {
+         "command": "node",
+         "args": ["/absolute/path/to/your/project/backend/src/mcp/index.js"],
+         "env": {
+           "MCP_DEFAULT_USER_ID": "1",
+           "DATABASE_URL": "mysql://user:password@localhost:3306/imagedb"
+         }
+       }
+     }
+   }
+   ```
+
+4. **重启 Claude Desktop**
+
+5. **开始对话式搜索**：
+   现在你可以在 Claude 中这样对话：
+   - "帮我找找昨天拍的照片"
+   - "搜索包含狗狗的图片"
+   - "查看图片ID为123的详细信息"
+   - "列出我所有的标签"
+
+### 3.6 命令行使用（测试）
+
+如果你想在命令行中测试 MCP 服务器：
+
+```bash
+# 安装依赖（如果尚未安装）
+cd backend
+npm install
+
+# 启动 MCP 服务器
+npm run mcp
+```
+
+然后在另一个终端中使用 MCP 客户端测试（需要安装 MCP SDK）。
+
+### 3.7 环境变量配置
+
+MCP 服务器需要以下环境变量：
+
+- `MCP_DEFAULT_USER_ID`: 默认用户ID（用于标识哪个用户的图片库）
+- `DATABASE_URL`: 数据库连接字符串
+
+确保数据库正在运行且包含图片数据。
+
+### 3.8 使用示例
+
+#### 基本搜索
+
+```
+用户: 帮我找几张风景照片
+
+Claude: 我来帮你搜索风景照片...
+
+(调用 search_images 工具)
+```
+
+#### 查看图片详情
+
+```
+用户: 查看图片ID 123的详细信息
+
+Claude: 获取图片详细信息...
+
+(调用 get_image_details 工具，image_id: "123")
+```
+
+#### 列出所有标签
+
+```
+用户: 我有哪些标签可以用？
+
+Claude: 让我帮你列出所有标签...
+
+(调用 list_user_tags 工具)
+```

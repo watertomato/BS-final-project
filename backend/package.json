@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
+    "mcp": "node src/mcp/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
@@ -16,6 +17,7 @@
   "license": "MIT",
   "dependencies": {
     "@prisma/client": "^5.20.0",
+    "@modelcontextprotocol/sdk": "^0.4.0",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

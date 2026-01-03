@@ -47,6 +47,22 @@ services:
     ports:
       - "5173:80"
 
+  # Optional: MCP server as a separate service
+  # Uncomment the following lines to run MCP server as a container service
+  # mcp:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   env_file:
+  #     - ./.env
+  #   environment:
+  #     DATABASE_URL: "mysql://user:password@db:3306/imagedb"
+  #   command: npm run mcp
+  #   # MCP uses stdio, so no port mapping needed for external access
+
 volumes:
   db_data:
 
